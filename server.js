@@ -12,6 +12,7 @@ import { isSea } from 'node:sea';
 
 import { parseProfile } from './lib/parse.js';
 import { buildCombos } from './lib/combos.js';
+import { deriveItems } from './lib/upgrades.js';
 import { buildSimcInput, buildVariants, normalizeOptions } from './lib/simc-input.js';
 import * as updater from './updater.js';
 
@@ -323,7 +324,9 @@ async function handleSim(req, res) {
 
   let variants;
   try {
-    variants = buildVariants(parsed, buildCombos(parsed, selected), loadouts, options);
+    const extra = deriveItems(parsed, options.modified, options.budget);
+    const combos = buildCombos(parsed, selected, Infinity, { extra, budget: options.budget });
+    variants = buildVariants(parsed, combos, loadouts, options);
   } catch (err) {
     return send(res, 400, { error: err.message });
   }

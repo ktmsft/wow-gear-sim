@@ -64,9 +64,34 @@ neck=,id=272229,gem_id=240906,…
       <div id="slots" class="slots"></div>
     </section>
 
+    <section class="card" id="upgrade-card" hidden>
+      <div class="card-head">
+        <h2><span class="step">3</span> Upgrades &amp; Catalyst <span class="optional">optional</span></h2>
+      </div>
+      <div class="upgrade-layout">
+        <div>
+          <div class="sub-head">
+            <h4>Item upgrade currency</h4>
+            <button type="button" id="crests-max">Max all</button>
+          </div>
+          <div id="crests" class="crests"></div>
+          <button type="button" id="upgrade-selected" class="action">Upgrade selected to max affordable</button>
+          <p class="hint">Adds an upgraded copy of every equipped and ticked item, at the highest rank your crests cover. Ranks at or below your best item level for that slot are free.</p>
+        </div>
+        <div>
+          <h4>Catalyst charges</h4>
+          <div id="charges" class="charges" role="radiogroup" aria-label="Catalyst charges"></div>
+          <p class="hint">The most catalyst items allowed in one combination.</p>
+          <button type="button" id="catalyze-selected" class="action">Catalyze selected items</button>
+          <p class="hint">Adds a tier-set version of every equipped and ticked item the catalyst can convert.</p>
+        </div>
+      </div>
+      <p id="mods-info" class="hint" aria-live="polite"></p>
+    </section>
+
     <section class="card" id="gem-card" hidden>
       <div class="card-head">
-        <h2><span class="step">3</span> Gems <span class="optional">optional</span></h2>
+        <h2><span class="step">4</span> Gems <span class="optional">optional</span></h2>
         <div class="bulk">
           <button type="button" data-gems="pure">Pure stats</button>
           <button type="button" data-gems="all">All</button>
@@ -87,7 +112,7 @@ neck=,id=272229,gem_id=240906,…
 
     <section class="card" id="consumable-card" hidden>
       <div class="card-head">
-        <h2><span class="step">4</span> Food, flask, potion &amp; oil <span class="optional">optional</span></h2>
+        <h2><span class="step">5</span> Food, flask, potion &amp; oil <span class="optional">optional</span></h2>
       </div>
       <p class="hint">"Used in every sim" applies to all results. Tick others to compare them against it.</p>
       <div id="consumables" class="consumables"></div>
@@ -95,7 +120,7 @@ neck=,id=272229,gem_id=240906,…
 
     <section class="card" id="talent-card" hidden>
       <div class="card-head">
-        <h2><span class="step">5</span> Talent loadouts <span class="optional">optional</span></h2>
+        <h2><span class="step">6</span> Talent loadouts <span class="optional">optional</span></h2>
       </div>
       <p class="hint">Each ticked loadout is simmed with your current gear.</p>
       <div id="loadouts" class="loadouts"></div>
@@ -103,7 +128,7 @@ neck=,id=272229,gem_id=240906,…
 
     <section class="card" id="options-card" hidden>
       <div class="card-head">
-        <h2><span class="step">6</span> Fight settings</h2>
+        <h2><span class="step">7</span> Fight settings</h2>
       </div>
       <div class="options">
         <label>Fight style
