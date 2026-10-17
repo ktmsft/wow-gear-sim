@@ -1,0 +1,102 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Publish even if nothing changed
+        type: boolean
+        default: false
+  schedule:
+    # Wednesdays, after the weekly reset and hotfixes.
+    - cron: '0 18 * * 3'
+
+permissions:
+  contents: write
+
+concurrency: release
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get SimulationCraft source
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/simulationcraft/simc simc-src
+          echo "SIMC_SHA=$(git -C simc-src rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
+          echo "APP_SHA=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
+
+      - name: Check for changes
+        id: changes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          body=$(gh release view --json body -q .body 2>/dev/null || true)
+          last_simc=$(sed -n 's/^simc-build: *//p' <<< "$body" | tr -d '\r')
+          last_app=$(sed -n 's/^app-build: *//p' <<< "$body" | tr -d '\r')
+          if [ "$last_simc" = "$SIMC_SHA" ] && [ "$last_app" = "$APP_SHA" ] && [ "${{ inputs.force }}" != "true" ]; then
+            echo "Nothing new since the last release."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.changes.outputs.skip != 'true'
+        with:
+          node-version: 22
+
+      - name: Build SimulationCraft
+        if: steps.changes.outputs.skip != 'true'
+        run: |
+          cmake -S simc-src -B simc-build -A x64 -DBUILD_GUI=OFF -DBUILD_TESTING=OFF
+          cmake --build simc-build --config Release --target simc --parallel
+
+      - name: Read SimulationCraft version
+        if: steps.changes.outputs.skip != 'true'
+        shell: bash
+        run: |
+          exe=$(find simc-build -name simc.exe | head -1)
+          echo "SIMC_EXE=$exe" >> "$GITHUB_ENV"
+          version=$("$exe" spell_query=spell.id=1 | head -1 | sed -E 's/ *\(.*//')
+          echo "SIMC_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Test and package
+        if: steps.changes.outputs.skip != 'true'
+        shell: bash
+        run: |
+          npm ci
+          npm test
+          node scripts/package.mjs --simc "$SIMC_EXE" --simc-src simc-src
+
+      - name: Zip
+        if: steps.changes.outputs.skip != 'true'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/GearSim -DestinationPath dist/GearSim-windows.zip
+          Compress-Archive -Path dist/GearSim/simc/simc.exe -DestinationPath dist/simc-win64.zip
+
+      - name: Publish release
+        if: steps.changes.outputs.skip != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          tag="v${version}-r${GITHUB_RUN_NUMBER}"
+          cat > notes.md <<EOF
+          **Download GearSim-windows.zip**, extract it, and double-click **GearSim.exe**.
+          If Windows says "Windows protected your PC", click **More info**, then **Run anyway**.
+
+          Already using Gear Sim? Click **Check for updates** at the bottom of the page to get the new engine.
+
+          simc-version: ${SIMC_VERSION}
+          simc-build: ${SIMC_SHA}
+          app-build: ${APP_SHA}
+          EOF
+          sed -i 's/^          //' notes.md
+          gh release create "$tag" dist/GearSim-windows.zip dist/simc-win64.zip \
+            --title "Gear Sim ${version} · ${SIMC_VERSION}" --notes-file notes.md --latest

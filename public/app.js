@@ -259,8 +259,14 @@ function loadSettings() {
   } catch { /* ignore bad saved settings */ }
 }
 
+function showGuide(show) {
+  $('guide').hidden = !show;
+  $('guide-toggle').hidden = show;
+}
+
 function loadProfile(text) {
   els.formError.hidden = true;
+  showGuide(!text.trim());
   const cards = [els.gearCard, els.gemCard, els.consumableCard, els.talentCard, els.optionsCard];
   if (!text.trim()) {
     parsed = null;
@@ -585,6 +591,90 @@ els.cancel.addEventListener('click', async () => {
   finish({ state: 'cancelled' });
 });
 
+// --- engine updates ----------------------------------------------------------------
+
+function applyStatus(s) {
+  renderSystem(s);
+  threads = s.threads || threads;
+  els.engine.className = `engine ${s.simc ? 'ok' : 'missing'}`;
+  els.engine.textContent = s.simc ? `${s.simc} · ${s.threads} threads` : 'SimulationCraft not installed';
+  $('engine-version').textContent = s.simc ? `${s.simc}${s.simcBuild ? ` (${s.simcBuild})` : ''}` : 'Not installed';
+  if (s.buildScript) {
+    const cmd = `powershell -ExecutionPolicy Bypass -File "${s.buildScript}"`;
+    $('update-cmd').textContent = cmd;
+    $('build-own').hidden = false;
+    $('engine-card').hidden = false;
+    $('copy-cmd').onclick = async (e) => {
+      await navigator.clipboard.writeText(cmd);
+      e.target.textContent = 'Copied';
+      setTimeout(() => { e.target.textContent = 'Copy'; }, 2000);
+    };
+  }
+}
+
+function renderUpdate(u) {
+  if (!u.supported) return;
+  $('engine-card').hidden = false;
+  $('update-row').hidden = false;
+  const status = $('update-status');
+  const updateBtn = $('update-btn');
+  const checkBtn = $('check-btn');
+  const busy = ['downloading', 'installing'].includes(u.install?.state);
+  updateBtn.hidden = true;
+  checkBtn.disabled = busy;
+  if (busy) {
+    status.textContent = u.install.state === 'downloading' ? 'Downloading the new engine…' : 'Installing…';
+    setTimeout(pollUpdate, 1000);
+    return;
+  }
+  els.engine.classList.toggle('has-update', !!u.available);
+  if (u.install?.state === 'error') status.textContent = `Update failed: ${u.install.error}`;
+  else if (u.error) status.textContent = u.error;
+  else if (u.available) {
+    status.innerHTML = `New engine available: <strong>${esc(u.latest.simc ?? u.latest.tag)}</strong>`;
+    updateBtn.hidden = false;
+    els.engine.textContent += ' · update available';
+  } else if (u.install?.state === 'done') status.textContent = 'Updated. You have the latest engine.';
+  else if (u.latest) status.textContent = 'You have the latest engine.';
+  else if (u.checked) status.textContent = 'No updates have been published yet.';
+  else status.textContent = '';
+}
+
+async function checkUpdate(force) {
+  try {
+    renderUpdate(await api(`/api/update?check=${force ? 'force' : '1'}`));
+  } catch { /* offline: stay quiet */ }
+}
+
+async function pollUpdate() {
+  const u = await api('/api/update').catch(() => null);
+  if (!u) return;
+  if (u.install?.state === 'done' || u.install?.state === 'error') {
+    applyStatus(await api('/api/status'));
+    return checkUpdate(false);
+  }
+  renderUpdate(u);
+}
+
+$('check-btn').addEventListener('click', () => {
+  $('update-status').textContent = 'Checking…';
+  checkUpdate(true);
+});
+
+$('update-btn').addEventListener('click', async () => {
+  try {
+    await api('/api/update', { method: 'POST' });
+    pollUpdate();
+  } catch (err) {
+    $('update-status').textContent = err.message;
+  }
+});
+
+$('guide-toggle').addEventListener('click', () => showGuide(true));
+els.engine.addEventListener('click', () => {
+  if (!$('engine-card').hidden) $('engine-card').scrollIntoView({ behavior: 'smooth' });
+});
+
 const gb = (bytes) => `${Math.round(bytes / 2 ** 30)} GB`;
 
 function renderSystem(s) {
@@ -602,26 +692,13 @@ function renderSystem(s) {
 }
 
 function refreshStatus() {
-  api('/api/status').then(renderSystem).catch(() => {});
+  api('/api/status').then(applyStatus).catch(() => {});
 }
 
 api('/api/status').then((s) => {
-  renderSystem(s);
-  threads = s.threads || threads;
-  els.engine.className = `engine ${s.simc ? 'ok' : 'missing'}`;
-  els.engine.textContent = s.simc ? `${s.simc} · ${s.threads} threads` : 'SimulationCraft not installed. See README';
-  if (s.buildScript) {
-    const cmd = `powershell -ExecutionPolicy Bypass -File "${s.buildScript}"`;
-    $('update-cmd').textContent = cmd;
-    $('engine-version').textContent = s.simc ?? 'not installed';
-    $('maintenance').hidden = false;
-    $('copy-cmd').onclick = async (e) => {
-      await navigator.clipboard.writeText(cmd);
-      e.target.textContent = 'Copied';
-      setTimeout(() => { e.target.textContent = 'Copy'; }, 2000);
-    };
-  }
+  applyStatus(s);
   updateCount();
+  checkUpdate(false);
 }).catch(() => { els.engine.textContent = 'Server offline'; });
 
 loadSettings();

@@ -8,12 +8,16 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { isSea } from 'node:sea';
 
 import { parseProfile } from './lib/parse.js';
 import { buildCombos } from './lib/combos.js';
 import { buildSimcInput, buildVariants, normalizeOptions } from './lib/simc-input.js';
+import * as updater from './updater.js';
 
-const ROOT = path.dirname(fileURLToPath(import.meta.url));
+// Packaged as GearSim.exe, files sit next to the exe.
+const PACKAGED = isSea();
+const ROOT = PACKAGED ? path.dirname(process.execPath) : path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? '127.0.0.1';
 const THREADS = Number(process.env.SIM_THREADS ?? Math.max(1, os.cpus().length));
@@ -35,8 +39,9 @@ function findSimc() {
   return candidates.find((p) => fs.existsSync(p)) ?? (process.platform === 'win32' ? 'simc.exe' : 'simc');
 }
 
-const SIMC = findSimc();
+let SIMC = findSimc();
 let simcVersion = null;
+let simcBuild = null;
 let lastRun = null;
 
 // Physical cores and GPUs need WMI on Windows; os only reports logical CPUs.
@@ -70,12 +75,14 @@ async function systemInfo() {
   };
 }
 
+// A trivial spell query is the cheapest call that prints the git build.
 function detectSimcVersion() {
+  SIMC = findSimc();
   return new Promise((resolve) => {
     let out = '';
     let child;
     try {
-      child = spawn(SIMC, [], { windowsHide: true });
+      child = spawn(SIMC, ['spell_query=spell.id=1'], { windowsHide: true });
     } catch {
       return resolve(null);
     }
@@ -84,6 +91,7 @@ function detectSimcVersion() {
     child.on('error', () => { clearTimeout(timer); resolve(null); });
     child.on('close', () => {
       clearTimeout(timer);
+      simcBuild = out.match(/git build \S+ ([0-9a-f]+)/)?.[1] ?? null;
       resolve(out.match(/SimulationCraft [^\r\n(]+/)?.[0].trim() ?? null);
     });
   });
@@ -338,6 +346,49 @@ async function handleSim(req, res) {
   send(res, 202, publicJob(job));
 }
 
+function buildScript() {
+  const script = path.join(ROOT, 'scripts', 'build-simc.ps1');
+  return process.platform === 'win32' && fs.existsSync(script) ? script : null;
+}
+
+async function handleUpdate(req, res, url) {
+  if (!updater.supported) return send(res, 200, { supported: false });
+  if (req.method === 'POST') {
+    if (running || queue.length) return send(res, 409, { error: 'Wait for the current sim to finish first.' });
+    updater.installUpdate({
+      simcDir: path.join(ROOT, 'simc'),
+      workDir: WORK_DIR,
+      onDone: async () => { simcVersion = await detectSimcVersion(); },
+    });
+    return send(res, 202, { install: updater.installState() });
+  }
+  let latest = null;
+  let error = null;
+  if (url.searchParams.has('check')) {
+    try {
+      latest = await updater.latestRelease(url.searchParams.get('check') === 'force');
+    } catch (err) {
+      error = `Couldn't check for updates (${err.message}).`;
+    }
+  }
+  send(res, 200, {
+    supported: true,
+    current: simcVersion,
+    build: simcBuild,
+    checked: url.searchParams.has('check'),
+    latest,
+    available: updater.isNewer(latest, simcBuild),
+    install: updater.installState(),
+    error,
+  });
+}
+
+function openBrowser(url) {
+  const [cmd, args] = process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]]
+    : process.platform === 'darwin' ? ['open', [url]] : ['xdg-open', [url]];
+  spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   try {
@@ -345,12 +396,14 @@ const server = http.createServer(async (req, res) => {
       simcVersion = await detectSimcVersion();
       return send(res, 200, {
         simc: simcVersion, simcPath: SIMC, threads: THREADS, queued: queue.length,
-        buildScript: process.platform === 'win32' ? path.join(ROOT, 'scripts', 'build-simc.ps1') : null,
+        simcBuild,
+        buildScript: buildScript(),
         system: await systemInfo(),
         lastRun,
       });
     }
     if (req.method === 'POST' && url.pathname === '/api/sim') return await handleSim(req, res);
+    if (url.pathname === '/api/update') return await handleUpdate(req, res, url);
 
     const jobMatch = url.pathname.match(/^\/api\/jobs\/([0-9a-f-]{36})$/);
     if (jobMatch) {
@@ -375,8 +428,23 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+const PAGE_URL = `http://${HOST === '0.0.0.0' ? '127.0.0.1' : HOST}:${PORT}/`;
+
+server.on('error', (err) => {
+  // Already running (e.g. double-clicked twice): just show it.
+  if (err.code === 'EADDRINUSE' && PACKAGED) {
+    openBrowser(PAGE_URL);
+    process.exit(0);
+  }
+  throw err;
+});
+
 server.listen(PORT, HOST, async () => {
   simcVersion = await detectSimcVersion();
-  console.log(`WoW Gear Sim running at http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
-  console.log(simcVersion ? `Using ${simcVersion}` : `SimulationCraft not found (looked for "${SIMC}"). Run scripts/get-simc.ps1.`);
+  console.log(`Gear Sim is running at ${PAGE_URL}`);
+  console.log(simcVersion ? `Using ${simcVersion}` : `SimulationCraft not found (looked for "${SIMC}").`);
+  if (PACKAGED) {
+    console.log('\nKeep this window open while you use Gear Sim. Close it to quit.');
+    if (!process.env.GEAR_SIM_NO_BROWSER) openBrowser(PAGE_URL);
+  }
 });

@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --bg: #0f1115;
   --panel: #171a21;
   --panel-2: #1e222b;
@@ -177,9 +177,7 @@ table.results { width: 100%; border-collapse: collapse; font-size: 14px; }
   .gem-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-/* maintenance */
-.maintenance summary { cursor: pointer; font-weight: 600; font-size: 15px; }
-.maintenance[open] summary { margin-bottom: 4px; }
+/* commands */
 .cmd { margin-top: 10px; display: flex; gap: 8px; align-items: stretch; }
 .cmd code { flex: 1; min-width: 0; padding: 9px 11px; font-size: 12.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 7px; overflow-wrap: anywhere; }
 .count .warn { color: var(--accent); }
@@ -187,3 +185,30 @@ table.results { width: 100%; border-collapse: collapse; font-size: 14px; }
 .system { flex-basis: 100%; display: flex; gap: 6px; flex-wrap: wrap; }
 .system .pill { font-size: 12px; color: var(--text); }
 .system .k { color: var(--muted); margin-right: 2px; }
+
+/* first-run guide */
+.guide { margin-top: 14px; display: grid; grid-template-columns: 1fr minmax(260px, 380px); gap: 18px; align-items: start; }
+.guide[hidden] { display: none; }
+.steps { margin: 0; padding-left: 22px; display: grid; gap: 10px; font-size: 14px; }
+.steps a { color: var(--accent); }
+kbd { font: 12px ui-monospace, Consolas, monospace; background: var(--panel-2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; }
+.mock { margin: 0; border: 1px solid #5a4a2a; border-radius: 6px; background: #0b0b0c; overflow: hidden; }
+.mock-title { display: flex; justify-content: space-between; padding: 5px 10px; background: linear-gradient(#3b2f1a, #241c10); color: #f2c66d; font-size: 12px; font-weight: 600; }
+.mock-x { color: #c9a05a; }
+.mock pre { margin: 0; padding: 8px 10px; font: 11px/1.45 ui-monospace, Consolas, monospace; color: #e8e8e8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mock figcaption { padding: 6px 10px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--line); background: var(--panel); }
+button.link { background: none; border: none; color: var(--accent); padding: 0; font-size: 13px; }
+button.link:hover { text-decoration: underline; }
+
+/* engine updates */
+.update-row { margin-top: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.update-row #update-status { flex: 1; min-width: 200px; font-size: 14px; }
+.update-row .primary { font-size: 14px; padding: 7px 16px; }
+#build-own { margin-top: 12px; }
+#build-own summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.engine { cursor: pointer; }
+.engine.has-update { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+
+@media (max-width: 760px) {
+  .guide { grid-template-columns: 1fr; }
+}

@@ -21,7 +21,31 @@
     <section class="card" id="paste-card">
       <div class="card-head">
         <h2><span class="step">1</span> Paste your character</h2>
-        <span class="hint">In game: <code>/simc</code>, then copy everything</span>
+        <button type="button" id="guide-toggle" class="link" hidden>How do I get this?</button>
+      </div>
+      <div id="guide" class="guide">
+        <ol class="steps">
+          <li><strong>Install the SimulationCraft addon</strong> from <a href="https://www.curseforge.com/wow/addons/simulationcraft" target="_blank" rel="noopener">CurseForge</a> or Wago, then log in to your character.</li>
+          <li><strong>Type <code>/simc</code></strong> in chat and press Enter. A window full of text opens.</li>
+          <li><strong>Copy all of it:</strong> click inside the window, press <kbd>Ctrl</kbd>+<kbd>A</kbd>, then <kbd>Ctrl</kbd>+<kbd>C</kbd>.</li>
+          <li><strong>Paste it in the box below</strong> with <kbd>Ctrl</kbd>+<kbd>V</kbd>.</li>
+        </ol>
+        <figure class="mock" aria-label="Illustration of the SimulationCraft addon window">
+          <div class="mock-title"><span>SimulationCraft</span><span class="mock-x">×</span></div>
+          <pre># Yourname - Fury - 2026-10-16 - US/Realm
+# SimC Addon 12.1.5-01
+warrior="Yourname"
+level=90
+race=human
+spec=fury
+talents=CcGAAAAAAAAAAAAAAAAAAAA…
+head=,id=271528,enchant_id=8017,…
+neck=,id=272229,gem_id=240906,…
+…
+### Gear from Bags
+# trinket1=,id=250225,…</pre>
+          <figcaption>What the addon window looks like. Copy everything in it, including "Gear from Bags".</figcaption>
+        </figure>
       </div>
       <textarea id="profile" spellcheck="false" placeholder='Paste the full text from the SimulationCraft addon (/simc) here'></textarea>
       <div id="character" class="character" hidden></div>
@@ -142,15 +166,26 @@
       </div>
       <p id="estimate-note" class="hint" hidden>≈ marks quick-pass estimates that didn't make the final round. They're less precise, but well behind the leaders.</p>
     </section>
-    <details class="card maintenance" id="maintenance" hidden>
-      <summary>Updating SimulationCraft</summary>
-      <p class="hint">After a WoW patch or hotfix, rebuild the sim engine so it knows the latest items and tuning. Open PowerShell, paste this, and press Enter. It takes a few minutes. Don't start a sim while it runs. No restart needed; refresh this page to see the new version.</p>
-      <div class="cmd">
-        <code id="update-cmd"></code>
-        <button type="button" id="copy-cmd">Copy</button>
+    <section class="card" id="engine-card" hidden>
+      <div class="card-head">
+        <h2>SimulationCraft engine</h2>
+        <span id="engine-version" class="hint"></span>
       </div>
-      <p class="hint">Engine in use: <span id="engine-version"></span></p>
-    </details>
+      <p class="hint">After a WoW patch or hotfix, update the engine so it knows the latest items and tuning.</p>
+      <div class="update-row" id="update-row" hidden>
+        <span id="update-status"></span>
+        <button type="button" id="update-btn" class="primary" hidden>Update now</button>
+        <button type="button" id="check-btn">Check for updates</button>
+      </div>
+      <details id="build-own" hidden>
+        <summary>Build it from source instead</summary>
+        <p class="hint">Open PowerShell, paste this, and press Enter. It takes a few minutes; don't start a sim while it runs.</p>
+        <div class="cmd">
+          <code id="update-cmd"></code>
+          <button type="button" id="copy-cmd">Copy</button>
+        </div>
+      </details>
+    </section>
   </main>
 
   <script type="module" src="/app.js"></script>

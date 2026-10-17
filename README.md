@@ -4,6 +4,14 @@ A local "Top Gear" for World of Warcraft. Paste your SimulationCraft addon expor
 
 It works for any class and spec. Everything comes from your export, and runs entirely on your PC with no limits.
 
+## Download (Windows)
+
+1. Download **GearSim-windows.zip** from the [latest release](https://github.com/ktmsft/wow-gear-sim/releases/latest).
+2. Extract it, open the `GearSim` folder and double-click **GearSim.exe**. Your browser opens to the app.
+3. If Windows says "Windows protected your PC", click **More info**, then **Run anyway**. The app isn't code-signed, so Windows doesn't recognize it.
+
+The page shows how to copy your character from the game. After a WoW patch, click **Check for updates** at the bottom of the page to get the latest sim engine.
+
 ## Features
 
 - **Gear:** every valid combination of equipped and bag items. Rings and trinkets are tried in both slots, and unique items are never doubled.
@@ -14,7 +22,7 @@ It works for any class and spec. Everything comes from your export, and runs ent
 - **Results:** a recommended combination and a profile you can copy to double-check on Raidbots.
 - **System info:** your CPU, threads, memory and last run speed. Very large runs ask before starting.
 
-## Setup (Windows)
+## Running from source (Windows)
 
 1. Install the tools (one time):
 
@@ -55,6 +63,12 @@ On macOS or Linux, build simc with CMake (`cmake -S simc-src -B build -DBUILD_GU
 After a WoW patch or hotfix, rerun `scripts\build-simc.ps1`. The page shows this command, with a copy button, under **Updating SimulationCraft**. No restart is needed.
 
 The gem and consumable lists are in `lib/catalog.js`, for Midnight (patch 12.1). Update them when a new season adds items.
+
+## Releases
+
+The [Release workflow](.github/workflows/release.yml) builds SimulationCraft and `GearSim.exe` on GitHub every Wednesday, publishing only when something changed. It can also be run by hand from the Actions tab. To package locally, run `npm install`, then `npm run package -- --simc simc\simc.exe`.
+
+`simc.exe` is [SimulationCraft](https://github.com/simulationcraft/simc), licensed under GPL-3.0. Its license and source link ship in the zip's `licenses` folder.
 
 ## Settings
 
