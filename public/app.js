@@ -840,6 +840,13 @@ api('/api/status').then((s) => {
   checkUpdate(false);
 }).catch(() => { els.engine.textContent = 'Server offline'; });
 
+const THEME_KEY = 'gear-sim:theme';
+$('theme').value = document.documentElement.dataset.theme || 'dark';
+$('theme').addEventListener('change', (e) => {
+  document.documentElement.dataset.theme = e.target.value;
+  storage((s) => s.setItem(THEME_KEY, e.target.value));
+});
+
 loadSettings();
 const saved = storage((s) => s.getItem(STORAGE_KEY));
 if (saved) {

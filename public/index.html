@@ -6,9 +6,20 @@
   <title>SIMulacrum</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
+  <script>
+    // Apply the saved theme before first paint.
+    try { const t = localStorage.getItem('gear-sim:theme'); if (t) document.documentElement.dataset.theme = t; } catch { /* storage blocked */ }
+  </script>
 </head>
 <body>
   <header class="top">
+    <label class="theme-picker">Theme
+      <select id="theme">
+        <option value="dark">Dark</option>
+        <option value="light">Light</option>
+        <option value="grey">Morally grey</option>
+      </select>
+    </label>
     <div class="brand">
       <h1 class="logo">
         <svg class="logo-wing" viewBox="0 0 60 40" aria-hidden="true"><path d="M58 20 L36 13 L40 20 L36 27 Z M34 20 L14 9 L20 20 L14 31 Z M12 20 L2 14 L6 20 L2 26 Z"/></svg>

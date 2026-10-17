@@ -11,6 +11,53 @@
   --bad: #e36464;
   --epic: #b77cf2;
   --radius: 10px;
+  --logo-fill: linear-gradient(180deg, #fff6cf 0%, #f6d572 30%, #d99a24 52%, #8f5b10 70%, #e9b949 88%, #fff1b0 100%);
+  --logo-edge: #1d1104;
+  --logo-stroke: 7px;
+  --logo-glow: rgba(255, 165, 40, 0.22);
+  --logo-wing: #d9a33a;
+  --subtitle: #d6ad5a;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #f5f1e8;
+  --panel: #fffdf8;
+  --panel-2: #f0eadd;
+  --line: #ddd3bf;
+  --text: #22252b;
+  --muted: #646a75;
+  --accent: #a8690f;
+  --accent-ink: #fffaf0;
+  --good: #1d7f45;
+  --bad: #b8322a;
+  --epic: #7136b8;
+  --logo-edge: #3a2407;
+  --logo-stroke: 4px;
+  --logo-glow: rgba(214, 140, 30, 0.18);
+  --logo-wing: #b9841f;
+  --subtitle: #8f6418;
+  color-scheme: light;
+}
+
+/* Morally grey: no heroes, no villains, just greys (and a pewter logo). */
+:root[data-theme="grey"] {
+  --bg: #2a2c30;
+  --panel: #33363b;
+  --panel-2: #3c3f45;
+  --line: #4a4e55;
+  --text: #e3e3e3;
+  --muted: #a2a5aa;
+  --accent: #b9bdc4;
+  --accent-ink: #1e2023;
+  --good: #9ab8a3;
+  --bad: #c99595;
+  --epic: #b7aac8;
+  --logo-fill: linear-gradient(180deg, #ffffff 0%, #dfe2e6 30%, #a0a6ae 52%, #5c626a 70%, #c7cbd1 88%, #f5f6f8 100%);
+  --logo-edge: #15171a;
+  --logo-glow: rgba(205, 210, 220, 0.16);
+  --logo-wing: #b4b9c0;
+  --subtitle: #c3c6cb;
   color-scheme: dark;
 }
 
@@ -269,23 +316,31 @@ button.app-update-x:hover { color: var(--text); }
   font-weight: 700;
   letter-spacing: 0.01em;
   /* Base layer: dark outline and drop shadow. */
-  color: #1d1104;
-  -webkit-text-stroke: 7px #1d1104;
-  text-shadow: 0 3px 0 #0b0601, 0 6px 14px rgba(0, 0, 0, 0.7), 0 0 26px rgba(255, 165, 40, 0.22);
+  color: var(--logo-edge);
+  -webkit-text-stroke: var(--logo-stroke) var(--logo-edge);
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.6), 0 6px 14px rgba(0, 0, 0, 0.45), 0 0 26px var(--logo-glow);
 }
 /* Top layer: the gold. */
 .logo-text::after {
   content: attr(data-text);
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, #fff6cf 0%, #f6d572 30%, #d99a24 52%, #8f5b10 70%, #e9b949 88%, #fff1b0 100%);
+  background: var(--logo-fill);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   -webkit-text-stroke: 0.6px rgba(255, 244, 200, 0.55);
   text-shadow: none;
 }
-.logo-wing { width: clamp(28px, 5vw, 46px); height: auto; fill: #d9a33a; opacity: 0.85; filter: drop-shadow(0 1px 0 #1d1104); }
+.logo-wing { width: clamp(28px, 5vw, 46px); height: auto; fill: var(--logo-wing); opacity: 0.85; filter: drop-shadow(0 1px 0 var(--logo-edge)); }
 .logo-wing.flip { transform: scaleX(-1); }
 .system .pill { max-width: 100%; }
-.brand .subtitle { margin: 2px 0 6px; font: italic 600 clamp(15px, 2.4vw, 19px) Georgia, 'Times New Roman', serif; color: #d6ad5a; letter-spacing: 0.02em; }
+.brand .subtitle { margin: 2px 0 6px; font: italic 600 clamp(15px, 2.4vw, 19px) Georgia, 'Times New Roman', serif; color: var(--subtitle); letter-spacing: 0.02em; }
+
+/* theme picker */
+.top { position: relative; }
+.theme-picker { position: absolute; top: 16px; right: 16px; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.theme-picker select { width: auto; padding: 4px 8px; font-size: 12px; }
+@media (max-width: 640px) {
+  .theme-picker { position: static; align-self: flex-end; }
+}
