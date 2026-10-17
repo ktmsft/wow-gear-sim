@@ -4,14 +4,6 @@ A local "Top Gear" for World of Warcraft. Paste your SimulationCraft addon expor
 
 It works for any class and spec. Everything comes from your export, and runs entirely on your PC with no limits.
 
-## Download (Windows)
-
-1. Download **SIMulacrum-windows.zip** from the [latest release](https://github.com/ktmsft/wow-gear-sim/releases/latest).
-2. Extract it, open the `SIMulacrum` folder and double-click **SIMulacrum.exe**. Your browser opens to the app.
-3. If Windows says "Windows protected your PC", click **More info**, then **Run anyway**. The app isn't code-signed, so Windows doesn't recognize it.
-
-The page shows how to copy your character from the game. After a WoW patch, click **Check for updates** at the bottom of the page to get the latest sim engine.
-
 ## Features
 
 - **Gear:** every valid combination of equipped and bag items. Rings and trinkets are tried in both slots, and unique items are never doubled.
@@ -23,7 +15,19 @@ The page shows how to copy your character from the game. After a WoW patch, clic
 - **Results:** a recommended combination and a profile you can copy to double-check on Raidbots.
 - **System info:** your CPU, threads, memory and last run speed. Very large runs ask before starting.
 
-## Running from source (Windows)
+## OPTION 1: Download (Windows)
+
+The easiest way: nothing to install.
+
+1. Download **SIMulacrum-windows.zip** from the [latest release](https://github.com/ktmsft/wow-gear-sim/releases/latest).
+2. Extract it, open the `SIMulacrum` folder and double-click **SIMulacrum.exe**. Your browser opens to the app.
+3. If Windows says "Windows protected your PC", click **More info**, then **Run anyway**. The app isn't code-signed, so Windows doesn't recognize it.
+
+The page shows how to copy your character from the game. After a WoW patch, click **Check for updates** at the bottom of the page to get the latest sim engine.
+
+## OPTION 2: Running from source (Windows)
+
+For developers, or if you want to build the sim engine yourself.
 
 1. Install the tools (one time):
 
