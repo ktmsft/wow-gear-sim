@@ -612,7 +612,25 @@ function applyStatus(s) {
   }
 }
 
+const APP_DISMISS_KEY = 'gear-sim:app-update-dismissed';
+
+// Banner for a newer app release; dismissal is remembered per version.
+function renderAppUpdate(app) {
+  if (!app?.latest) return;
+  const dismissed = storage((s) => s.getItem(APP_DISMISS_KEY)) === app.latest;
+  const show = app.available && app.page && !dismissed;
+  $('app-update').hidden = !show;
+  if (!show) return;
+  $('app-update-text').textContent = `SIMplicity ${app.latest} is available (you have ${app.current}).`;
+  $('app-update-link').href = app.page;
+  $('app-update-dismiss').onclick = () => {
+    storage((s) => s.setItem(APP_DISMISS_KEY, app.latest));
+    $('app-update').hidden = true;
+  };
+}
+
 function renderUpdate(u) {
+  renderAppUpdate(u.app);
   if (!u.supported) return;
   $('engine-card').hidden = false;
   $('update-row').hidden = false;

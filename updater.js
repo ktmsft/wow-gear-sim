@@ -1,4 +1,4 @@
-// Updates simc.exe from the latest GitHub release (Windows only).
+// Checks the latest GitHub release for app updates; updates simc.exe from it (Windows only).
 
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -31,6 +31,7 @@ export async function latestRelease(force = false) {
   const asset = rel.assets?.find((a) => a.name === ASSET);
   const release = {
     tag: rel.tag_name,
+    version: parseTagVersion(rel.tag_name),
     page: rel.html_url,
     published: rel.published_at,
     build: rel.body?.match(/simc-build:\s*([0-9a-f]{7,40})/)?.[1] ?? null,
@@ -39,6 +40,22 @@ export async function latestRelease(force = false) {
   };
   cached = { at: Date.now(), release };
   return release;
+}
+
+// 'v1.2.3-r45' -> '1.2.3'
+export function parseTagVersion(tag) {
+  return /^v(\d+\.\d+\.\d+)/.exec(tag ?? '')?.[1] ?? null;
+}
+
+// Numeric semver compare of 'x.y.z' strings: <0, 0 or >0.
+export function compareVersions(a, b) {
+  const pa = String(a).split('.').map(Number);
+  const pb = String(b).split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d;
+  }
+  return 0;
 }
 
 export function isNewer(release, currentBuild) {

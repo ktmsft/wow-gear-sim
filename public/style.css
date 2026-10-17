@@ -212,3 +212,16 @@ button.link:hover { text-decoration: underline; }
 @media (max-width: 760px) {
   .guide { grid-template-columns: 1fr; }
 }
+
+/* app update banner */
+.app-update {
+  display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap;
+  padding: 8px 8px 8px 14px; font-size: 14px; border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.app-update[hidden] { display: none; }
+#app-update-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.app-update a { color: var(--accent); font-weight: 600; }
+button.app-update-x { background: none; border: none; color: var(--muted); font-size: 20px; line-height: 1; padding: 2px 8px; }
+button.app-update-x:hover { color: var(--text); }

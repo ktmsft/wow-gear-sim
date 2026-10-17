@@ -14,6 +14,7 @@ import { parseProfile } from './lib/parse.js';
 import { buildCombos } from './lib/combos.js';
 import { buildSimcInput, buildVariants, normalizeOptions } from './lib/simc-input.js';
 import * as updater from './updater.js';
+import pkg from './package.json' with { type: 'json' };
 
 // Packaged as GearSim.exe, files sit next to the exe.
 const PACKAGED = isSea();
@@ -22,6 +23,7 @@ const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? '127.0.0.1';
 const THREADS = Number(process.env.SIM_THREADS ?? Math.max(1, os.cpus().length));
 const WORK_DIR = path.join(os.tmpdir(), 'wow-gear-sim');
+const APP_VERSION = pkg.version;
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -352,8 +354,8 @@ function buildScript() {
 }
 
 async function handleUpdate(req, res, url) {
-  if (!updater.supported) return send(res, 200, { supported: false });
   if (req.method === 'POST') {
+    if (!updater.supported) return send(res, 400, { error: 'Engine updates are only supported on Windows.' });
     if (running || queue.length) return send(res, 409, { error: 'Wait for the current sim to finish first.' });
     updater.installUpdate({
       simcDir: path.join(ROOT, 'simc'),
@@ -371,6 +373,14 @@ async function handleUpdate(req, res, url) {
       error = `Couldn't check for updates (${err.message}).`;
     }
   }
+  // App updates are a manual zip download, so they apply on every platform.
+  const app = {
+    current: APP_VERSION,
+    latest: latest?.version ?? null,
+    available: !!latest?.version && updater.compareVersions(latest.version, APP_VERSION) > 0,
+    page: latest?.page ?? null,
+  };
+  if (!updater.supported) return send(res, 200, { supported: false, app });
   send(res, 200, {
     supported: true,
     current: simcVersion,
@@ -380,6 +390,7 @@ async function handleUpdate(req, res, url) {
     available: updater.isNewer(latest, simcBuild),
     install: updater.installState(),
     error,
+    app,
   });
 }
 
@@ -397,6 +408,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, {
         simc: simcVersion, simcPath: SIMC, threads: THREADS, queued: queue.length,
         simcBuild,
+        appVersion: APP_VERSION,
         buildScript: buildScript(),
         system: await systemInfo(),
         lastRun,
