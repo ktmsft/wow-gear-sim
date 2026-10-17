@@ -212,3 +212,10 @@ button.link:hover { text-decoration: underline; }
 @media (max-width: 760px) {
   .guide { grid-template-columns: 1fr; }
 }
+
+/* footer */
+.site-footer { max-width: 1100px; margin: 0 auto; padding: 16px 16px 32px; border-top: 1px solid var(--line); display: flex; gap: 8px 16px; justify-content: space-between; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.site-footer p { margin: 0; }
+.site-footer nav { display: flex; gap: 6px 16px; flex-wrap: wrap; }
+.site-footer a { color: var(--muted); text-decoration: none; overflow-wrap: anywhere; }
+.site-footer a:hover { color: var(--accent); text-decoration: underline; }

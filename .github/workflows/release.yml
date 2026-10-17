@@ -76,8 +76,8 @@ jobs:
         if: steps.changes.outputs.skip != 'true'
         shell: pwsh
         run: |
-          Compress-Archive -Path dist/GearSim -DestinationPath dist/GearSim-windows.zip
-          Compress-Archive -Path dist/GearSim/simc/simc.exe -DestinationPath dist/simc-win64.zip
+          Compress-Archive -Path dist/SIMplicity -DestinationPath dist/SIMplicity-windows.zip
+          Compress-Archive -Path dist/SIMplicity/simc/simc.exe -DestinationPath dist/simc-win64.zip
 
       - name: Publish release
         if: steps.changes.outputs.skip != 'true'
@@ -88,15 +88,15 @@ jobs:
           version=$(node -p "require('./package.json').version")
           tag="v${version}-r${GITHUB_RUN_NUMBER}"
           cat > notes.md <<EOF
-          **Download GearSim-windows.zip**, extract it, and double-click **GearSim.exe**.
+          **Download SIMplicity-windows.zip**, extract it, and double-click **SIMplicity.exe**.
           If Windows says "Windows protected your PC", click **More info**, then **Run anyway**.
 
-          Already using Gear Sim? Click **Check for updates** at the bottom of the page to get the new engine.
+          Already using SIMplicity? Click **Check for updates** at the bottom of the page to get the new engine.
 
           simc-version: ${SIMC_VERSION}
           simc-build: ${SIMC_SHA}
           app-build: ${APP_SHA}
           EOF
           sed -i 's/^          //' notes.md
-          gh release create "$tag" dist/GearSim-windows.zip dist/simc-win64.zip \
-            --title "Gear Sim ${version} · ${SIMC_VERSION}" --notes-file notes.md --latest
+          gh release create "$tag" dist/SIMplicity-windows.zip dist/simc-win64.zip \
+            --title "SIMplicity ${version} · ${SIMC_VERSION}" --notes-file notes.md --latest

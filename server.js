@@ -441,10 +441,10 @@ server.on('error', (err) => {
 
 server.listen(PORT, HOST, async () => {
   simcVersion = await detectSimcVersion();
-  console.log(`Gear Sim is running at ${PAGE_URL}`);
+  console.log(`SIMplicity is running at ${PAGE_URL}`);
   console.log(simcVersion ? `Using ${simcVersion}` : `SimulationCraft not found (looked for "${SIMC}").`);
   if (PACKAGED) {
-    console.log('\nKeep this window open while you use Gear Sim. Close it to quit.');
+    console.log('\nKeep this window open while you use SIMplicity. Close it to quit.');
     if (!process.env.GEAR_SIM_NO_BROWSER) openBrowser(PAGE_URL);
   }
 });
