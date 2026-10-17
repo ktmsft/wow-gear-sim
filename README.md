@@ -110,6 +110,23 @@ The logo uses [Cormorant](https://fonts.google.com/specimen/Cormorant) by the Co
 npm test
 ```
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+Only `SIMulacrum.exe`, built from this repository by the [Release workflow](.github/workflows/release.yml), is signed. Every release is approved by a maintainer before signing.
+
+- Committers and reviewers: [Kennedy Michel (@ktmsft)](https://github.com/ktmsft)
+- Approvers: [Kennedy Michel (@ktmsft)](https://github.com/ktmsft)
+
+## Privacy
+
+SIMulacrum doesn't collect any data. It only goes online to check GitHub for updates, and to download a new sim engine when you ask it to. See the [privacy policy](PRIVACY.md).
+
+## License
+
+[MIT](LICENSE). The bundled SimulationCraft engine is GPL-3.0 and the logo font is SIL OFL; their licenses ship in the release zip.
+
 ## Support
 
 If SIMulacrum helps you, you can [buy me a coffee](https://buymeacoffee.com/bitofmoss). I also make [WoW addons on CurseForge](https://www.curseforge.com/members/abitofmoss/projects).
