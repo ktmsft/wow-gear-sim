@@ -236,3 +236,9 @@ button.action { margin-top: 12px; border-color: color-mix(in srgb, var(--accent)
   .crest { grid-template-columns: 1fr 80px; }
   .crest button { display: none; }
 }
+/* footer */
+.site-footer { max-width: 1100px; margin: 0 auto; padding: 16px 16px 32px; border-top: 1px solid var(--line); display: flex; gap: 8px 16px; justify-content: space-between; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.site-footer p { margin: 0; }
+.site-footer nav { display: flex; gap: 6px 16px; flex-wrap: wrap; }
+.site-footer a { color: var(--muted); text-decoration: none; overflow-wrap: anywhere; }
+.site-footer a:hover { color: var(--accent); text-decoration: underline; }

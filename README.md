@@ -1,4 +1,4 @@
-# Gear Sim
+# SIMplicity
 
 A local "Top Gear" for World of Warcraft. Paste your SimulationCraft addon export and it sims your gear, gems, consumables and talent loadouts with [SimulationCraft](https://github.com/simulationcraft/simc), then ranks them by DPS.
 
@@ -6,8 +6,8 @@ It works for any class and spec. Everything comes from your export, and runs ent
 
 ## Download (Windows)
 
-1. Download **GearSim-windows.zip** from the [latest release](https://github.com/ktmsft/wow-gear-sim/releases/latest).
-2. Extract it, open the `GearSim` folder and double-click **GearSim.exe**. Your browser opens to the app.
+1. Download **SIMplicity-windows.zip** from the [latest release](https://github.com/ktmsft/wow-gear-sim/releases/latest).
+2. Extract it, open the `SIMplicity` folder and double-click **SIMplicity.exe**. Your browser opens to the app.
 3. If Windows says "Windows protected your PC", click **More info**, then **Run anyway**. The app isn't code-signed, so Windows doesn't recognize it.
 
 The page shows how to copy your character from the game. After a WoW patch, click **Check for updates** at the bottom of the page to get the latest sim engine.
@@ -45,7 +45,7 @@ The page shows how to copy your character from the game. After a WoW patch, clic
    powershell -ExecutionPolicy Bypass -File scripts\install-shortcut.ps1
    ```
 
-   Double-click **Gear Sim** to start it and open the page. Or run `npm start` and go to http://127.0.0.1:8787.
+   Double-click **SIMplicity** to start it and open the page. Or run `npm start` and go to http://127.0.0.1:8787.
 
 On macOS or Linux, build simc with CMake (`cmake -S simc-src -B build -DBUILD_GUI=OFF && cmake --build build --target simc`). Then either copy the binary to `simc/simc` or set `SIMC_PATH`, and run `npm start`.
 
@@ -66,7 +66,7 @@ The gem and consumable lists are in `lib/catalog.js`, for Midnight (patch 12.1).
 
 ## Releases
 
-The [Release workflow](.github/workflows/release.yml) builds SimulationCraft and `GearSim.exe` on GitHub every Wednesday, publishing only when something changed. It can also be run by hand from the Actions tab. To package locally, run `npm install`, then `npm run package -- --simc simc\simc.exe`.
+The [Release workflow](.github/workflows/release.yml) builds SimulationCraft and `SIMplicity.exe` on GitHub every Wednesday, publishing only when something changed. It can also be run by hand from the Actions tab. To package locally, run `npm install`, then `npm run package -- --simc simc\simc.exe`.
 
 `simc.exe` is [SimulationCraft](https://github.com/simulationcraft/simc), licensed under GPL-3.0. Its license and source link ship in the zip's `licenses` folder.
 
@@ -84,3 +84,7 @@ The [Release workflow](.github/workflows/release.yml) builds SimulationCraft and
 ```powershell
 npm test
 ```
+
+## Support
+
+If SIMplicity helps you, you can [buy me a coffee](https://buymeacoffee.com/bitofmoss). I also make [WoW addons on CurseForge](https://www.curseforge.com/members/abitofmoss/projects).
