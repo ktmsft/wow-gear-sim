@@ -37,7 +37,7 @@ code { font-family: ui-monospace, Consolas, monospace; background: var(--panel-2
 }
 .brand h1 { margin: 0; font-size: 26px; letter-spacing: 0.2px; }
 .brand p { margin: 4px 0 0; color: var(--muted); }
-.engine { font-size: 13px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; }
+.engine { max-width: 100%; font-size: 13px; color: var(--muted); border: 1px solid var(--line); border-radius: 14px; padding: 4px 12px; }
 .engine.ok { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
 .engine.missing { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
 
@@ -254,3 +254,37 @@ button.action { margin-top: 12px; border-color: color-mix(in srgb, var(--accent)
 .app-update a { color: var(--accent); font-weight: 600; }
 button.app-update-x { background: none; border: none; color: var(--muted); font-size: 20px; line-height: 1; padding: 2px 8px; }
 button.app-update-x:hover { color: var(--text); }
+
+/* logo: Cinzel Decorative subset (SIL OFL, see fonts/OFL.txt), renamed per the license */
+@font-face {
+  font-family: 'SIMulacrum Logo';
+  src: url('/fonts/logo.woff2') format('woff2');
+  font-weight: 900;
+  font-display: block;
+}
+.brand h1.logo { display: flex; align-items: center; gap: 10px; margin: 0 0 2px; font-size: clamp(34px, 7vw, 58px); line-height: 1.15; }
+.logo-text {
+  position: relative;
+  font-family: 'SIMulacrum Logo', 'Trajan Pro', Georgia, serif;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  /* Base layer: dark outline and drop shadow. */
+  color: #1d1104;
+  -webkit-text-stroke: 7px #1d1104;
+  text-shadow: 0 3px 0 #0b0601, 0 6px 14px rgba(0, 0, 0, 0.7), 0 0 26px rgba(255, 165, 40, 0.22);
+}
+/* Top layer: the gold. */
+.logo-text::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, #fff6cf 0%, #f6d572 30%, #d99a24 52%, #8f5b10 70%, #e9b949 88%, #fff1b0 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-stroke: 0.6px rgba(255, 244, 200, 0.55);
+  text-shadow: none;
+}
+.logo-wing { width: clamp(28px, 5vw, 46px); height: auto; fill: #d9a33a; opacity: 0.85; filter: drop-shadow(0 1px 0 #1d1104); }
+.logo-wing.flip { transform: scaleX(-1); }
+.system .pill { max-width: 100%; }

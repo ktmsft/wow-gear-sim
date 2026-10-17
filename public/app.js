@@ -824,7 +824,6 @@ function renderSystem(s) {
     ['CPU', sys.cpu],
     ['Threads', `${sys.cores ? `${sys.cores} cores · ` : ''}${sys.threads} threads · sims use ${sys.simThreads}`],
     ['Memory', `${gb(sys.memTotal)} (${gb(sys.memFree)} free)`],
-    ...(sys.gpus.length ? [['GPU', `${sys.gpus.join(', ')} · not used by SimulationCraft`]] : []),
     ...(s.lastRun ? [['Last run', `${s.lastRun.sets.toLocaleString()} sets in ${duration(s.lastRun.seconds)}${s.lastRun.smart ? ' (smart sim)' : ''}`]] : []),
   ];
   $('system').innerHTML = pills.map(([k, v]) => `<span class="pill"><span class="k">${k}</span> ${esc(v)}</span>`).join('');

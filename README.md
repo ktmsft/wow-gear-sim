@@ -71,6 +71,8 @@ Upgrade tracks, crest costs and catalyst items are in `lib/season.js`. When a ne
 
 The [Release workflow](.github/workflows/release.yml) builds SimulationCraft and `SIMulacrum.exe` on GitHub every Wednesday, publishing only when something changed. It can also be run by hand from the Actions tab. To package locally, run `npm install`, then `npm run package -- --simc simc\simc.exe`.
 
+The logo uses [Cinzel Decorative](https://fonts.google.com/specimen/Cinzel+Decorative) by Natanael Gama, under the SIL Open Font License (`public/fonts/OFL.txt`).
+
 `simc.exe` is [SimulationCraft](https://github.com/simulationcraft/simc), licensed under GPL-3.0. Its license and source link ship in the zip's `licenses` folder.
 
 ## Settings

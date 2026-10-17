@@ -31,6 +31,8 @@ const MIME = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.svg': 'image/svg+xml',
+  '.woff2': 'font/woff2',
+  '.txt': 'text/plain; charset=utf-8',
 };
 
 function findSimc() {
@@ -47,21 +49,17 @@ let simcVersion = null;
 let simcBuild = null;
 let lastRun = null;
 
-// Physical cores and GPUs need WMI on Windows; os only reports logical CPUs.
+// Physical cores need WMI on Windows; os only reports logical CPUs.
 function detectHardware() {
-  const hw = { cores: null, gpus: [] };
+  const hw = { cores: null };
   if (process.platform !== 'win32') return Promise.resolve(hw);
   return new Promise((resolve) => {
     const ps = spawn('powershell', ['-NoProfile', '-Command',
-      '(Get-CimInstance Win32_Processor | Measure-Object NumberOfCores -Sum).Sum; '
-      + '(Get-CimInstance Win32_VideoController).Name'], { windowsHide: true });
+      '(Get-CimInstance Win32_Processor | Measure-Object NumberOfCores -Sum).Sum'], { windowsHide: true });
     let out = '';
     ps.stdout.on('data', (d) => { out += d; });
     ps.on('error', () => resolve(hw));
-    ps.on('close', () => {
-      const [cores, ...gpus] = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-      resolve({ cores: Number(cores) || null, gpus });
-    });
+    ps.on('close', () => resolve({ cores: Number(out.trim()) || null }));
   });
 }
 const hardware = detectHardware();
