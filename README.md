@@ -4,6 +4,8 @@ A local "Top Gear" for World of Warcraft. Paste your SimulationCraft addon expor
 
 It works for any class and spec. Everything comes from your export, and runs entirely on your PC with no limits.
 
+![SIMulacrum with a character pasted in and gear to try](docs/screenshots/overview.png)
+
 ## Features
 
 - **Gear:** every valid combination of equipped and bag items. Rings and trinkets are tried in both slots, and unique items are never doubled.
@@ -14,6 +16,20 @@ It works for any class and spec. Everything comes from your export, and runs ent
 - **Smart sim:** a quick pass over everything, then re-sims the top results and anything statistically tied with them at full precision.
 - **Results:** a recommended combination and a profile you can copy to double-check on Raidbots.
 - **System info:** your CPU, threads, memory and last run speed. Very large runs ask before starting.
+
+## Screenshots
+
+**Results:** every set ranked against what you have on now, with the margin of error. The top card sums up the changes worth making.
+
+![Ranked sim results](docs/screenshots/results.png)
+
+**Upgrades, catalyst and gems:** your crests and catalyst charges come straight from the export.
+
+![Upgrade currency, catalyst charges and gem picker](docs/screenshots/upgrades-gems.png)
+
+**Themes:** dark, light and morally grey.
+
+![The three themes](docs/screenshots/themes.png)
 
 ## OPTION 1: Download (Windows)
 
