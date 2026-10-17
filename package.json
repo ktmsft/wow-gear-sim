@@ -1,0 +1,11 @@
+{
+  "name": "wow-gear-sim",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local Top Gear for World of Warcraft, powered by SimulationCraft",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  }
+}

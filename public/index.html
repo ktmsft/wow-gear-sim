@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gear Sim</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <h1>Gear Sim</h1>
+      <p>Paste your SimulationCraft addon export, choose what to try, and see what does the most damage.</p>
+    </div>
+    <div id="engine" class="engine">Checking SimulationCraft…</div>
+  </header>
+
+  <main>
+    <section class="card" id="paste-card">
+      <div class="card-head">
+        <h2><span class="step">1</span> Paste your character</h2>
+        <span class="hint">In game: <code>/simc</code>, then copy everything</span>
+      </div>
+      <textarea id="profile" spellcheck="false" placeholder='Paste the full text from the SimulationCraft addon (/simc) here'></textarea>
+      <div id="character" class="character" hidden></div>
+    </section>
+
+    <section class="card" id="gear-card" hidden>
+      <div class="card-head">
+        <h2><span class="step">2</span> Gear to try</h2>
+        <div class="bulk">
+          <button type="button" data-bulk="upgrades">Tick likely upgrades</button>
+          <button type="button" data-bulk="all">Tick all</button>
+          <button type="button" data-bulk="none">Clear</button>
+        </div>
+      </div>
+      <p class="hint">Equipped items are always included. Rings and trinkets are tried in every valid pair.</p>
+      <div id="slots" class="slots"></div>
+    </section>
+
+    <section class="card" id="gem-card" hidden>
+      <div class="card-head">
+        <h2><span class="step">3</span> Gems <span class="optional">optional</span></h2>
+        <div class="bulk">
+          <button type="button" data-gems="pure">Pure stats</button>
+          <button type="button" data-gems="all">All</button>
+          <button type="button" data-gems="none">Clear</button>
+        </div>
+      </div>
+      <p id="gem-info" class="hint"></p>
+      <div class="gem-layout">
+        <div id="gem-grid" class="gem-grid"></div>
+        <div class="gem-side">
+          <div id="diamonds" class="diamonds"></div>
+          <label class="check"><input id="maxColors" type="checkbox" checked> Only setups with the most gem colors</label>
+          <p class="hint">Diamonds get stronger for each different gem color you have socketed.</p>
+        </div>
+      </div>
+      <p id="gem-count" class="hint"></p>
+    </section>
+
+    <section class="card" id="consumable-card" hidden>
+      <div class="card-head">
+        <h2><span class="step">4</span> Food, flask, potion &amp; oil <span class="optional">optional</span></h2>
+      </div>
+      <p class="hint">"Used in every sim" applies to all results. Tick others to compare them against it.</p>
+      <div id="consumables" class="consumables"></div>
+    </section>
+
+    <section class="card" id="talent-card" hidden>
+      <div class="card-head">
+        <h2><span class="step">5</span> Talent loadouts <span class="optional">optional</span></h2>
+      </div>
+      <p class="hint">Each ticked loadout is simmed with your current gear.</p>
+      <div id="loadouts" class="loadouts"></div>
+    </section>
+
+    <section class="card" id="options-card" hidden>
+      <div class="card-head">
+        <h2><span class="step">6</span> Fight settings</h2>
+      </div>
+      <div class="options">
+        <label>Fight style
+          <select id="fightStyle">
+            <option value="Patchwerk">Patchwerk (single target)</option>
+            <option value="DungeonSlice">Dungeon Slice (M+)</option>
+            <option value="CastingPatchwerk">Casting Patchwerk</option>
+            <option value="LightMovement">Light movement</option>
+            <option value="HeavyMovement">Heavy movement</option>
+            <option value="HecticAddCleave">Hectic add cleave</option>
+          </select>
+        </label>
+        <label>Targets
+          <input id="targets" type="number" min="1" max="20" value="1">
+        </label>
+        <label>Fight length (s)
+          <input id="duration" type="number" min="30" max="900" step="30" value="300">
+        </label>
+        <label>Precision
+          <select id="targetError">
+            <option value="0.5">Fast (±0.5%)</option>
+            <option value="0.2" selected>Normal (±0.2%)</option>
+            <option value="0.1">Precise (±0.1%)</option>
+            <option value="0.05">Very precise (±0.05%)</option>
+          </select>
+        </label>
+        <label class="check"><input id="smart" type="checkbox" checked> Smart sim: quick pass first, then re-sim the best at full precision</label>
+        <label class="check"><input id="copyEnchants" type="checkbox" checked> Copy enchants from equipped gear</label>
+        <label class="check"><input id="copyGems" type="checkbox"> Copy gems from equipped gear</label>
+      </div>
+      <div class="run-row">
+        <div id="count" class="count"></div>
+        <button id="run" class="primary" type="button">Run sim</button>
+      </div>
+      <p id="form-error" class="error" hidden></p>
+    </section>
+
+    <section class="card" id="progress-card" hidden>
+      <div class="card-head">
+        <h2>Simulating</h2>
+        <button id="cancel" type="button">Cancel</button>
+      </div>
+      <div class="bar"><div id="bar-fill"></div></div>
+      <p id="progress-text" class="hint"></p>
+      <pre id="progress-line" class="log"></pre>
+    </section>
+
+    <section class="card" id="results-card" hidden>
+      <div class="card-head">
+        <h2>Results</h2>
+        <span id="results-meta" class="hint"></span>
+      </div>
+      <div id="best" class="best"></div>
+      <div id="tabs" class="tabs" role="tablist"></div>
+      <div class="table-wrap">
+        <table class="results">
+          <thead><tr><th>#</th><th>Change</th><th class="num">DPS</th><th class="num">vs. now</th></tr></thead>
+          <tbody id="results"></tbody>
+        </table>
+      </div>
+      <p id="estimate-note" class="hint" hidden>≈ marks quick-pass estimates that didn't make the final round. They're less precise, but well behind the leaders.</p>
+    </section>
+    <details class="card maintenance" id="maintenance" hidden>
+      <summary>Updating SimulationCraft</summary>
+      <p class="hint">After a WoW patch or hotfix, rebuild the sim engine so it knows the latest items and tuning. Open PowerShell, paste this, and press Enter. It takes a few minutes. Don't start a sim while it runs. No restart needed; refresh this page to see the new version.</p>
+      <div class="cmd">
+        <code id="update-cmd"></code>
+        <button type="button" id="copy-cmd">Copy</button>
+      </div>
+      <p class="hint">Engine in use: <span id="engine-version"></span></p>
+    </details>
+  </main>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

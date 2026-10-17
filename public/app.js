@@ -1,0 +1,628 @@
+import { parseProfile, itemLine, GROUPS, GROUP_LABELS, PAIR_GROUPS, IGNORED_SLOTS } from '/lib/parse.js';
+import { countCombos } from '/lib/combos.js';
+import { GEMS, DIAMONDS, GEM_COLORS, GEM_BY_ID, CONSUMABLES } from '/lib/catalog.js';
+import { equippedSockets, buildGemSetups, describeStats } from '/lib/gems.js';
+
+const STORAGE_KEY = 'gear-sim:profile';
+const SETTINGS_KEY = 'gear-sim:settings';
+const SLOT_LABELS = {
+  ...GROUP_LABELS, finger1: 'Ring 1', finger2: 'Ring 2', trinket1: 'Trinket 1', trinket2: 'Trinket 2',
+};
+const KIND_LABELS = { gear: 'Gear', gems: 'Gems', consumable: 'Consumables', talents: 'Talents' };
+
+// Mirrors the server's smart sim.
+const SMART_MIN_SETS = 40;
+const SMART_KEEP = { gear: 25, gems: 12, consumable: 40, talents: 20 };
+
+const $ = (id) => document.getElementById(id);
+const els = {
+  profile: $('profile'), character: $('character'), engine: $('engine'),
+  gearCard: $('gear-card'), slots: $('slots'),
+  gemCard: $('gem-card'), gemGrid: $('gem-grid'), diamonds: $('diamonds'), gemInfo: $('gem-info'),
+  gemCount: $('gem-count'), maxColors: $('maxColors'),
+  consumableCard: $('consumable-card'), consumables: $('consumables'),
+  talentCard: $('talent-card'), loadouts: $('loadouts'),
+  optionsCard: $('options-card'), count: $('count'), run: $('run'), formError: $('form-error'),
+  progressCard: $('progress-card'), barFill: $('bar-fill'), progressText: $('progress-text'),
+  progressLine: $('progress-line'), cancel: $('cancel'),
+  resultsCard: $('results-card'), results: $('results'), resultsMeta: $('results-meta'), best: $('best'),
+  tabs: $('tabs'), estimateNote: $('estimate-note'),
+};
+
+let parsed = null;
+let selected = new Set();
+let gemPick = new Set();
+let diamondPick = new Set();
+let consumableUse = {};
+let consumableCompare = {};
+let currentJob = null;
+let threads = 8;
+let lastResult = null;
+let activeTab = 'overview';
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[c]));
+const fmt = (n) => Math.round(n).toLocaleString();
+
+function storage(fn) {
+  try { return fn(window.localStorage); } catch { return null; }
+}
+
+function wowheadUrl(item) {
+  const bonus = item.bonusIds ? `?bonus=${item.bonusIds.split('/').join(':')}` : '';
+  return `https://www.wowhead.com/item=${item.id}${bonus}`;
+}
+
+function equippedInGroup(group) {
+  const slots = PAIR_GROUPS[group] ?? [group];
+  return slots.map((s) => parsed.equipped[s]).filter(Boolean);
+}
+
+// At least the item level of the weakest piece it could replace.
+function isLikelyUpgrade(item) {
+  const current = equippedInGroup(item.group);
+  if (!current.length) return true;
+  return item.ilvl >= Math.min(...current.map((c) => c.ilvl ?? 0));
+}
+
+// --- gear --------------------------------------------------------------------------
+
+function renderCharacter() {
+  const pills = [
+    parsed.name, parsed.spec && `${parsed.spec} ${parsed.className}`,
+    `${Object.keys(parsed.equipped).length} equipped`, `${parsed.bags.length} in bags`,
+  ].filter(Boolean);
+  els.character.innerHTML = pills.map((p) => `<span class="pill">${esc(p)}</span>`).join('');
+  els.character.hidden = false;
+}
+
+function itemRow(item) {
+  const current = equippedInGroup(item.group);
+  const best = Math.max(...current.map((c) => c.ilvl ?? 0));
+  const up = !item.equipped && item.ilvl > best;
+  const control = item.equipped
+    ? '<input type="checkbox" checked disabled>'
+    : `<input type="checkbox" data-key="${item.key}" ${selected.has(item.key) ? 'checked' : ''}>`;
+  return `
+    <label class="item ${item.equipped ? 'equipped' : ''} ${!item.equipped && !isLikelyUpgrade(item) ? 'dim' : ''}">
+      ${control}
+      <span class="name"><a href="${wowheadUrl(item)}" target="_blank" rel="noopener">${esc(item.name)}</a></span>
+      ${item.equipped ? '<span class="tag">Equipped</span>' : ''}
+      <span class="ilvl ${up ? 'up' : ''}">${item.ilvl ?? ''}</span>
+    </label>`;
+}
+
+function renderSlots() {
+  els.slots.innerHTML = GROUPS.map((group) => {
+    const equipped = equippedInGroup(group);
+    const bags = parsed.bags.filter((b) => b.group === group).sort((a, b) => (b.ilvl ?? 0) - (a.ilvl ?? 0));
+    if (!equipped.length && !bags.length) return '';
+    const ticked = bags.filter((b) => selected.has(b.key)).length;
+    return `
+      <div class="slot">
+        <h3><span>${GROUP_LABELS[group]}</span><span>${bags.length ? `${ticked}/${bags.length} from bags` : ''}</span></h3>
+        ${equipped.map(itemRow).join('')}
+        ${bags.map(itemRow).join('')}
+      </div>`;
+  }).join('');
+}
+
+// --- gems --------------------------------------------------------------------------
+
+function renderGems() {
+  const sockets = equippedSockets(parsed);
+  const regular = sockets.filter((s) => !s.diamond);
+  const diamond = sockets.find((s) => s.diamond);
+  const current = new Set(sockets.map((s) => s.gemId));
+  els.gemCard.hidden = !sockets.length;
+  if (!sockets.length) return;
+
+  const where = regular.map((s) => SLOT_LABELS[s.slot]).join(', ');
+  els.gemInfo.innerHTML = `Your gear has <strong>${regular.length}</strong> gem socket${regular.length === 1 ? '' : 's'}`
+    + (where ? ` (${esc(where)})` : '')
+    + (diamond ? ` and a diamond in ${esc(SLOT_LABELS[diamond.slot])}` : '')
+    + `. Now socketed: ${esc(describeStats(regular.map((s) => s.gemId)))}${diamond ? ` + ${esc(GEM_BY_ID[diamond.gemId]?.label ?? '')} Diamond` : ''}.`
+    + ' Each setup is tried on your current gear.';
+
+  els.gemGrid.innerHTML = Object.entries(GEM_COLORS).map(([color, info]) => `
+    <div class="gem-col">
+      <h4 class="c-${color}">${info.label}</h4>
+      ${GEMS.filter((g) => g.color === color).map((g) => `
+        <label class="tile" title="${esc(g.name)}">
+          <input type="checkbox" data-gem="${g.id}" ${gemPick.has(g.id) ? 'checked' : ''}>
+          <span class="dot bg-${color}"></span>
+          <span>${esc(g.label)}</span>
+          ${current.has(g.id) ? '<span class="tag equipped-mark">Equipped</span>' : ''}
+        </label>`).join('')}
+    </div>`).join('');
+
+  els.diamonds.innerHTML = diamond ? DIAMONDS.map((d) => `
+    <label class="tile">
+      <input type="checkbox" data-diamond="${d.id}" ${diamondPick.has(d.id) ? 'checked' : ''}>
+      <span class="dot bg-diamond"></span>
+      <span>${esc(d.label)}<small>${esc(d.note)}</small></span>
+      ${current.has(d.id) ? '<span class="tag equipped-mark">Equipped</span>' : ''}
+    </label>`).join('') : '<p class="hint">No diamond socketed.</p>';
+}
+
+function gemChoice() {
+  return { gems: [...gemPick], diamonds: [...diamondPick], maxColors: els.maxColors.checked };
+}
+
+function gemSetupCount() {
+  try {
+    return { n: buildGemSetups(parsed, gemChoice()).length };
+  } catch (err) {
+    return { n: 0, error: err.message };
+  }
+}
+
+// --- consumables --------------------------------------------------------------------
+
+function renderConsumables() {
+  els.consumables.innerHTML = Object.entries(CONSUMABLES).map(([kind, cat]) => {
+    const use = consumableUse[kind] ?? 'default';
+    const compare = consumableCompare[kind] ?? new Set();
+    return `
+      <div class="cons">
+        <h4>${esc(cat.label)}</h4>
+        <span class="use-label">Used in every sim</span>
+        <select data-use="${kind}">
+          <option value="default" ${use === 'default' ? 'selected' : ''}>SimC default for your spec</option>
+          ${cat.items.map((i) => `<option value="${i.value}" ${use === i.value ? 'selected' : ''}>${esc(i.label)}</option>`).join('')}
+          <option value="none" ${use === 'none' ? 'selected' : ''}>None</option>
+        </select>
+        <span class="use-label">Compare</span>
+        ${cat.items.map((i) => `
+          <label class="tile ${use === i.value ? 'is-base' : ''}">
+            <input type="checkbox" data-compare="${kind}" value="${i.value}" ${compare.has(i.value) && use !== i.value ? 'checked' : ''} ${use === i.value ? 'disabled' : ''}>
+            <span>${esc(i.label)}<small>${esc(i.name)}</small></span>
+          </label>`).join('')}
+      </div>`;
+  }).join('');
+}
+
+function consumableCompareCount() {
+  return Object.entries(consumableCompare)
+    .reduce((n, [kind, set]) => n + [...set].filter((v) => v !== (consumableUse[kind] ?? 'default')).length, 0);
+}
+
+// --- talents & counts -----------------------------------------------------------------
+
+function renderLoadouts() {
+  els.talentCard.hidden = !parsed.loadouts.length;
+  const active = parsed.talents;
+  els.loadouts.innerHTML = parsed.loadouts.map((l, i) => `
+    <label class="item">
+      <input type="checkbox" data-loadout="${i}">
+      <span class="name">${esc(l.name)}</span>
+      ${l.talents === active ? '<span class="tag">Active</span>' : ''}
+    </label>`).join('');
+}
+
+function setSeconds(err) {
+  // Measured: ~0.11 s/set at ±1%, ~0.6 s at ±0.2% (16 threads, 300 s fight).
+  const duration = Number($('duration').value) || 300;
+  return (0.09 + 0.02 / err ** 2) * (duration / 300) * (16 / threads);
+}
+
+function estimate(counts) {
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  const err = Number($('targetError').value);
+  if ($('smart').checked && total >= SMART_MIN_SETS && err < 1) {
+    const finalists = Object.entries(counts).reduce((n, [k, c]) => n + Math.min(c, SMART_KEEP[k]), 0);
+    return { seconds: 10 + total * setSeconds(1) + finalists * setSeconds(err), smart: true, finalists };
+  }
+  return { seconds: 5 + total * setSeconds(err), smart: false };
+}
+
+function duration(s) {
+  if (s < 60) return `${Math.max(5, Math.round(s / 5) * 5)} sec`;
+  if (s < 3600) return `${Math.round(s / 60)} min`;
+  return `${(s / 3600).toFixed(1)} hr`;
+}
+
+function updateCount() {
+  if (!parsed) return;
+  const gear = countCombos(parsed, [...selected]);
+  const gems = gemSetupCount();
+  const counts = {
+    gear,
+    gems: gems.n,
+    consumable: consumableCompareCount(),
+    talents: els.loadouts.querySelectorAll('input:checked').length,
+  };
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  els.gemCount.textContent = gems.error ?? (gems.n ? `${gems.n} gem setup${gems.n === 1 ? '' : 's'} to try` : '');
+  const over = !!gems.error;
+  const parts = Object.entries(counts).filter(([, n]) => n).map(([k, n]) => `${n.toLocaleString()} ${KIND_LABELS[k].toLowerCase()}`);
+  els.count.className = `count ${over ? 'over' : ''}`;
+  if (over) {
+    els.count.innerHTML = esc(gems.error);
+  } else if (!total) {
+    els.count.innerHTML = 'Tick something to compare against your current setup.';
+  } else {
+    const est = estimate(counts);
+    els.count.innerHTML = `<strong>${total.toLocaleString()}</strong> ${total === 1 ? 'set' : 'sets'}`
+      + (parts.length > 1 ? ` (${parts.join(', ')})` : '')
+      + ` · about <strong>${duration(est.seconds)}</strong>`
+      + (est.smart ? ` · smart sim re-checks the top ${est.finalists}` : '')
+      + (est.seconds > 3600 ? ' · long run; you can cancel any time' : '');
+  }
+  els.run.disabled = over || total === 0 || !!currentJob;
+}
+
+function saveSettings() {
+  storage((s) => s.setItem(SETTINGS_KEY, JSON.stringify({
+    gems: [...gemPick], diamonds: [...diamondPick], maxColors: els.maxColors.checked,
+    use: consumableUse,
+    compare: Object.fromEntries(Object.entries(consumableCompare).map(([k, v]) => [k, [...v]])),
+    fightStyle: $('fightStyle').value, targets: $('targets').value, duration: $('duration').value,
+    targetError: $('targetError').value, smart: $('smart').checked,
+  })));
+}
+
+function loadSettings() {
+  const raw = storage((s) => s.getItem(SETTINGS_KEY));
+  if (!raw) return;
+  try {
+    const s = JSON.parse(raw);
+    gemPick = new Set(s.gems ?? []);
+    diamondPick = new Set(s.diamonds ?? []);
+    els.maxColors.checked = s.maxColors !== false;
+    consumableUse = s.use ?? {};
+    consumableCompare = Object.fromEntries(Object.entries(s.compare ?? {}).map(([k, v]) => [k, new Set(v)]));
+    for (const id of ['fightStyle', 'targets', 'duration', 'targetError']) if (s[id] != null) $(id).value = s[id];
+    $('smart').checked = s.smart !== false;
+  } catch { /* ignore bad saved settings */ }
+}
+
+function loadProfile(text) {
+  els.formError.hidden = true;
+  const cards = [els.gearCard, els.gemCard, els.consumableCard, els.talentCard, els.optionsCard];
+  if (!text.trim()) {
+    parsed = null;
+    els.character.hidden = true;
+    for (const el of cards) el.hidden = true;
+    return;
+  }
+  parsed = parseProfile(text);
+  if (!parsed.className) {
+    els.character.hidden = false;
+    els.character.innerHTML = '<span class="pill">No character found. Paste the full /simc export.</span>';
+    for (const el of cards) el.hidden = true;
+    return;
+  }
+  selected = new Set(parsed.bags.filter(isLikelyUpgrade).map((b) => b.key));
+  renderCharacter();
+  renderSlots();
+  renderGems();
+  renderConsumables();
+  renderLoadouts();
+  els.gearCard.hidden = false;
+  els.consumableCard.hidden = false;
+  els.optionsCard.hidden = false;
+  updateCount();
+}
+
+// --- running --------------------------------------------------------------------
+
+function readOptions() {
+  return {
+    fightStyle: $('fightStyle').value,
+    targets: Number($('targets').value),
+    duration: Number($('duration').value),
+    targetError: Number($('targetError').value),
+    copyEnchants: $('copyEnchants').checked,
+    copyGems: $('copyGems').checked,
+    smart: $('smart').checked,
+    gems: gemChoice(),
+    consumables: consumableUse,
+    compare: Object.fromEntries(Object.entries(consumableCompare).map(([k, v]) => [k, [...v]])),
+  };
+}
+
+async function api(path, init) {
+  const res = await fetch(path, init);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`);
+  return body;
+}
+
+function showProgress(job) {
+  const { done = 0, total = 0, phase, stage = 1, stages = 1 } = job.progress ?? {};
+  const bar = els.barFill.parentElement;
+  const known = phase === 'profilesets' && total > 0;
+  bar.classList.toggle('indeterminate', !known);
+  els.barFill.style.width = known ? `${(done / total) * 100}%` : '';
+  const prefix = stages > 1 ? (stage === 1 ? 'Quick pass: ' : 'Final pass: ') : '';
+  els.progressText.textContent = job.state === 'queued'
+    ? `Waiting in queue (position ${job.position})…`
+    : known ? `${prefix}set ${done} of ${total}…`
+    : phase === 'baseline' ? `${prefix}simulating your current setup…` : `${prefix}starting SimulationCraft…`;
+  els.progressLine.textContent = job.lastLine ?? '';
+}
+
+async function run() {
+  els.formError.hidden = true;
+  const loadoutIdx = [...els.loadouts.querySelectorAll('input:checked')].map((i) => Number(i.dataset.loadout));
+  try {
+    const job = await api('/api/sim', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        profile: els.profile.value,
+        selected: [...selected],
+        loadouts: loadoutIdx.map((i) => parsed.loadouts[i].name),
+        options: readOptions(),
+      }),
+    });
+    currentJob = job.id;
+    els.resultsCard.hidden = true;
+    els.progressCard.hidden = false;
+    updateCount();
+    poll();
+  } catch (err) {
+    els.formError.textContent = err.message;
+    els.formError.hidden = false;
+  }
+}
+
+async function poll() {
+  if (!currentJob) return;
+  try {
+    const job = await api(`/api/jobs/${currentJob}`);
+    showProgress(job);
+    if (job.state === 'queued' || job.state === 'running') {
+      setTimeout(poll, 1000);
+      return;
+    }
+    finish(job);
+  } catch (err) {
+    finish({ state: 'error', error: err.message });
+  }
+}
+
+function finish(job) {
+  currentJob = null;
+  els.progressCard.hidden = true;
+  updateCount();
+  if (job.state === 'done') {
+    lastResult = job.result;
+    activeTab = 'overview';
+    renderResults();
+  } else if (job.state === 'error') {
+    els.formError.textContent = job.error;
+    els.formError.hidden = false;
+  }
+}
+
+// --- results ----------------------------------------------------------------------
+
+function describe(row) {
+  if (row.kind === 'baseline') return '<span class="change">Current setup</span>';
+  if (row.kind === 'talents') return `<span class="change"><span class="slotname">Talents</span>${esc(row.loadout)}</span>`;
+  if (row.kind === 'consumable') return `<span class="change">${esc(row.label)} <span class="ilvl">${esc(row.detail)}</span></span>`;
+  if (row.kind === 'gems') {
+    return `<span class="change">${esc(row.label)}</span><span class="change ilvl">${esc(describeStats(row.gems))}</span>`;
+  }
+  return row.changes.map((c) => `
+    <span class="change"><span class="slotname">${SLOT_LABELS[c.slot] ?? c.slot}</span><a href="${wowheadUrl(c)}" target="_blank" rel="noopener">${esc(c.name)}</a> <span class="ilvl">${c.ilvl ?? ''}</span></span>`).join('');
+}
+
+function bestByKind(result) {
+  const margin = (row) => (row.error ?? 0) + (result.baseline.error ?? 0);
+  const out = {};
+  for (const row of result.rows) {
+    if (row.estimate) continue;
+    const key = row.kind === 'consumable' ? `consumable:${row.category}` : row.kind;
+    if (!out[key] || row.dps > out[key].dps) out[key] = row;
+  }
+  return Object.fromEntries(Object.entries(out).filter(([, row]) => row.delta > margin(row)));
+}
+
+// SimC profile with every winning change applied.
+function profileWith(winners) {
+  const lines = [...parsed.charLines];
+  const slotLines = {};
+  for (const row of winners) {
+    if (row.kind === 'talents') {
+      const i = lines.findIndex((l) => l.startsWith('talents='));
+      lines[i] = `talents=${row.talents}`;
+    }
+    if (row.kind === 'consumable') {
+      const option = CONSUMABLES[row.category].option;
+      lines.push(row.category === 'oil'
+        ? `temporary_enchant=main_hand:${row.value}${parsed.equipped.off_hand ? `/off_hand:${row.value}` : ''}`
+        : `${option}=${row.value}`);
+    }
+  }
+  // Gear beats gems for the same slot.
+  for (const row of winners.filter((r) => r.kind === 'gems')) {
+    for (const c of row.changes) slotLines[c.slot] = c.line;
+  }
+  for (const row of winners.filter((r) => r.kind === 'gear')) {
+    for (const c of row.changes) slotLines[c.slot] = c.line;
+  }
+  for (const [slot, item] of Object.entries(parsed.equipped)) {
+    if (IGNORED_SLOTS.has(slot)) continue;
+    lines.push(slotLines[slot] ?? itemLine(slot, item.fields));
+  }
+  return lines.join('\n');
+}
+
+function renderBest(result) {
+  const best = bestByKind(result);
+  const winners = Object.values(best);
+  if (!winners.length) {
+    els.best.className = 'best none';
+    els.best.innerHTML = '<h3>Keep what you have</h3><p class="hint">Nothing you ticked beats your current setup by more than the sim\'s margin of error.</p>';
+    return;
+  }
+  const total = winners.reduce((n, r) => n + r.delta, 0);
+  const label = (key, row) => {
+    if (row.kind === 'gear') return row.changes.map((c) => `${SLOT_LABELS[c.slot]}: <strong>${esc(c.name)}</strong> (${c.ilvl})`).join('<br>');
+    if (row.kind === 'gems') return `<strong>${esc(row.label)}</strong>`;
+    if (row.kind === 'consumable') return `<strong>${esc(row.label.split(': ')[1])}</strong>`;
+    return `<strong>${esc(row.loadout)}</strong>`;
+  };
+  const keyName = (key) => key.startsWith('consumable:') ? CONSUMABLES[key.split(':')[1]].label : KIND_LABELS[key];
+  els.best.className = 'best';
+  els.best.innerHTML = `
+    <h3>Recommended changes: about +${fmt(total)} DPS (+${((total / result.baseline.dps) * 100).toFixed(2)}%)</h3>
+    <div class="best-grid">
+      ${Object.entries(best).map(([key, row]) => `
+        <span class="k">${esc(keyName(key))}</span><span>${label(key, row)}</span><span class="num delta pos">+${fmt(row.delta)}</span>`).join('')}
+    </div>
+    ${winners.length > 1 ? '<p class="hint">Each change was measured on its own, so the combined gain is approximate.</p>' : ''}
+    <button type="button" id="copy-best">Copy SimC profile with these changes</button>`;
+  $('copy-best').onclick = async (e) => {
+    await navigator.clipboard.writeText(profileWith(winners));
+    e.target.textContent = 'Copied';
+  };
+}
+
+function renderTabs(result) {
+  const counts = {};
+  for (const row of result.rows) counts[row.kind] = (counts[row.kind] ?? 0) + 1;
+  const tabs = [['overview', 'Top results', result.rows.length], ...Object.keys(KIND_LABELS)
+    .filter((k) => counts[k]).map((k) => [k, KIND_LABELS[k], counts[k]])];
+  if (!tabs.some(([k]) => k === activeTab)) activeTab = 'overview';
+  els.tabs.innerHTML = tabs.map(([key, label, n]) => `
+    <button type="button" role="tab" data-tab="${key}" aria-selected="${key === activeTab}">${label}<span class="n">${n}</span></button>`).join('');
+}
+
+function renderTable(result) {
+  const pool = activeTab === 'overview' ? result.rows.slice(0, 50) : result.rows.filter((r) => r.kind === activeTab);
+  const rows = [...pool, { kind: 'baseline', dps: result.baseline.dps, error: result.baseline.error, delta: 0, deltaPct: 0 }]
+    .sort((a, b) => b.dps - a.dps);
+  const top = rows[0].dps;
+  const low = rows[rows.length - 1].dps;
+  els.results.innerHTML = rows.map((row, i) => {
+    const width = top === low ? 100 : 15 + ((row.dps - low) / (top - low)) * 85;
+    const cls = row.delta > 0 ? 'pos' : row.delta < 0 ? 'neg' : '';
+    const sign = row.delta > 0 ? '+' : '';
+    const approx = row.estimate ? '≈' : '';
+    return `
+      <tr class="${row.kind === 'baseline' ? 'baseline' : ''} ${row.estimate ? 'estimate' : ''}">
+        <td>${i + 1}</td>
+        <td>${describe(row)}</td>
+        <td class="num">${approx}${fmt(row.dps)}${row.error ? `<div class="err">±${fmt(row.error)}</div>` : ''}<div class="dpsbar" style="width:${width}%"></div></td>
+        <td class="num"><span class="delta ${cls}">${row.kind === 'baseline' ? '—' : `${approx}${sign}${fmt(row.delta)}<div class="err">${sign}${row.deltaPct.toFixed(2)}%</div>`}</span></td>
+      </tr>`;
+  }).join('');
+  els.estimateNote.hidden = !pool.some((r) => r.estimate);
+}
+
+function renderResults() {
+  const result = lastResult;
+  els.resultsMeta.textContent = `${result.rows.length} sets in ${duration(result.seconds ?? 0)}${result.smart ? ' · smart sim' : ''} · ${result.simc ?? 'SimulationCraft'}`;
+  renderBest(result);
+  renderTabs(result);
+  renderTable(result);
+  if (els.resultsCard.hidden) {
+    els.resultsCard.hidden = false;
+    els.resultsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+// --- wiring -----------------------------------------------------------------------
+
+els.profile.addEventListener('input', () => {
+  loadProfile(els.profile.value);
+  storage((s) => s.setItem(STORAGE_KEY, els.profile.value));
+});
+
+els.slots.addEventListener('change', (e) => {
+  const key = e.target.dataset.key;
+  if (!key) return;
+  if (e.target.checked) selected.add(key); else selected.delete(key);
+  renderSlots();
+  updateCount();
+});
+
+document.querySelector('#gear-card .bulk').addEventListener('click', (e) => {
+  const mode = e.target.dataset.bulk;
+  if (!mode) return;
+  const pick = { all: () => true, none: () => false, upgrades: isLikelyUpgrade }[mode];
+  selected = new Set(parsed.bags.filter(pick).map((b) => b.key));
+  renderSlots();
+  updateCount();
+});
+
+els.gemCard.addEventListener('change', (e) => {
+  const { gem, diamond } = e.target.dataset;
+  if (gem) e.target.checked ? gemPick.add(gem) : gemPick.delete(gem);
+  if (diamond) e.target.checked ? diamondPick.add(diamond) : diamondPick.delete(diamond);
+  saveSettings();
+  updateCount();
+});
+
+document.querySelector('#gem-card .bulk').addEventListener('click', (e) => {
+  const mode = e.target.dataset.gems;
+  if (!mode) return;
+  gemPick = new Set(GEMS.filter((g) => mode === 'all' || (mode === 'pure' && g.main === g.sub)).map((g) => g.id));
+  if (mode === 'none') diamondPick.clear();
+  renderGems();
+  saveSettings();
+  updateCount();
+});
+
+els.consumables.addEventListener('change', (e) => {
+  const { use, compare } = e.target.dataset;
+  if (use) {
+    consumableUse[use] = e.target.value;
+    renderConsumables();
+  }
+  if (compare) {
+    const set = (consumableCompare[compare] ??= new Set());
+    e.target.checked ? set.add(e.target.value) : set.delete(e.target.value);
+  }
+  saveSettings();
+  updateCount();
+});
+
+els.tabs.addEventListener('click', (e) => {
+  const tab = e.target.closest('[data-tab]')?.dataset.tab;
+  if (!tab || !lastResult) return;
+  activeTab = tab;
+  renderTabs(lastResult);
+  renderTable(lastResult);
+});
+
+els.loadouts.addEventListener('change', updateCount);
+for (const id of ['fightStyle', 'targets', 'duration', 'targetError', 'smart']) {
+  $(id).addEventListener('change', () => { saveSettings(); updateCount(); });
+}
+
+els.run.addEventListener('click', run);
+els.cancel.addEventListener('click', async () => {
+  if (currentJob) await api(`/api/jobs/${currentJob}`, { method: 'DELETE' }).catch(() => {});
+  finish({ state: 'cancelled' });
+});
+
+api('/api/status').then((s) => {
+  threads = s.threads || threads;
+  els.engine.className = `engine ${s.simc ? 'ok' : 'missing'}`;
+  els.engine.textContent = s.simc ? `${s.simc} · ${s.threads} threads` : 'SimulationCraft not installed. See README';
+  if (s.buildScript) {
+    const cmd = `powershell -ExecutionPolicy Bypass -File "${s.buildScript}"`;
+    $('update-cmd').textContent = cmd;
+    $('engine-version').textContent = s.simc ?? 'not installed';
+    $('maintenance').hidden = false;
+    $('copy-cmd').onclick = async (e) => {
+      await navigator.clipboard.writeText(cmd);
+      e.target.textContent = 'Copied';
+      setTimeout(() => { e.target.textContent = 'Copy'; }, 2000);
+    };
+  }
+  updateCount();
+}).catch(() => { els.engine.textContent = 'Server offline'; });
+
+loadSettings();
+const saved = storage((s) => s.getItem(STORAGE_KEY));
+if (saved) {
+  els.profile.value = saved;
+  loadProfile(saved);
+}
