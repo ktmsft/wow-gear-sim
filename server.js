@@ -14,7 +14,10 @@ import { parseProfile } from './lib/parse.js';
 import { buildCombos } from './lib/combos.js';
 import { deriveItems } from './lib/upgrades.js';
 import { buildSimcInput, buildVariants, normalizeOptions } from './lib/simc-input.js';
+import { breakdown, buffUptimes, mainStat, scaleOnly, statWeights } from './lib/report.js';
+import { crestVariants, vaultVariants, trinketVariants } from './lib/modes.js';
 import * as updater from './updater.js';
+import * as history from './history.js';
 import pkg from './package.json' with { type: 'json' };
 
 // Packaged as SIMulacrum.exe, files sit next to the exe.
@@ -24,6 +27,7 @@ const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? '127.0.0.1';
 const THREADS = Number(process.env.SIM_THREADS ?? Math.max(1, os.cpus().length));
 const WORK_DIR = path.join(os.tmpdir(), 'wow-gear-sim');
+const REPORT_DIR = path.join(WORK_DIR, 'reports');
 const APP_VERSION = pkg.version;
 
 const MIME = {
@@ -106,9 +110,9 @@ const queue = [];
 let running = null;
 
 function publicJob(job) {
-  const { id, state, progress, lastLine, result, error, comboCount, queuedAt, startedAt, finishedAt } = job;
+  const { id, mode, state, progress, lastLine, result, error, comboCount, queuedAt, startedAt, finishedAt } = job;
   return {
-    id, state, progress, lastLine, result, error, comboCount, queuedAt, startedAt, finishedAt,
+    id, mode, state, progress, lastLine, result, error, comboCount, queuedAt, startedAt, finishedAt,
     position: state === 'queued' ? queue.indexOf(job) + 1 : 0,
   };
 }
@@ -131,25 +135,29 @@ const SMART_QUICK_ERROR = 1.0;
 const SMART_KEEP = { gear: 25, gems: 12, consumable: 40, talents: 20 };
 
 function readResults(json) {
-  const baseActor = json.sim.players[0];
+  const player = json.sim.players[0];
   const baseline = {
-    dps: baseActor.collected_data.dps.mean,
-    error: baseActor.collected_data.dps.mean_std_dev * 1.96,
+    dps: player.collected_data.dps.mean,
+    error: player.collected_data.dps.mean_std_dev * 1.96,
   };
   const results = new Map((json.sim.profilesets?.results ?? []).map((r) => [r.name, {
     dps: r.mean,
     error: r.mean_error ?? (r.mean_stddev != null ? r.mean_stddev * 1.96 : null),
   }]));
-  return { baseline, results, version: json.version };
+  return { baseline, results, version: json.version, player };
 }
 
-async function runSimc(job, variants, targetError, stage) {
+// One SimulationCraft run. Returns null if the job was cancelled meanwhile.
+async function runSimc(job, {
+  variants = [], targetError = job.options.targetError, stage = 1, options = job.options,
+  actorLines = [], htmlPath = null, scale = null,
+} = {}) {
   const dir = path.join(WORK_DIR, job.id);
   const inputPath = path.join(dir, `stage${stage}.simc`);
   const jsonPath = path.join(dir, `stage${stage}.json`);
   await fsp.mkdir(dir, { recursive: true });
-  await fsp.writeFile(inputPath, buildSimcInput(job.parsed, variants, job.options, {
-    jsonPath, threads: THREADS, targetError,
+  await fsp.writeFile(inputPath, buildSimcInput(job.parsed, variants, options, {
+    jsonPath, threads: THREADS, targetError, htmlPath, actorLines, scale,
   }));
   job.progress = { ...job.progress, stage, phase: 'starting', done: 0, total: variants.length };
 
@@ -209,44 +217,151 @@ function toRows(variants, run, estimate) {
   });
 }
 
+// Sims every variant against the current setup, smart (two-pass) when it's worth it.
+async function simVariants(job, variants) {
+  const { options } = job;
+  const smart = options.smart && variants.length >= SMART_MIN_SETS && options.targetError < SMART_QUICK_ERROR;
+  if (!smart) {
+    job.progress = { stages: 1 };
+    const final = await runSimc(job, { variants });
+    return final && { final, smart, rows: toRows(variants, final, false).sort((a, b) => b.dps - a.dps) };
+  }
+  job.progress = { stages: 2 };
+  const quick = await runSimc(job, { variants, targetError: SMART_QUICK_ERROR, stage: 1 });
+  if (!quick) return null;
+  const finalists = pickFinalists(variants, quick);
+  const final = await runSimc(job, { variants: finalists, stage: 2 });
+  if (!final) return null;
+  const kept = new Set(finalists.map((v) => v.name));
+  // Put quick-pass numbers on the final pass's baseline.
+  const shift = final.baseline.dps - quick.baseline.dps;
+  const quickRows = toRows(variants.filter((v) => !kept.has(v.name)), quick, true)
+    .map((r) => ({ ...r, dps: r.dps + shift }));
+  const rows = [...toRows(finalists, final, false), ...quickRows].sort((a, b) => b.dps - a.dps);
+  return { final, smart, rows };
+}
+
+const details = (player) => ({ breakdown: breakdown(player), buffs: buffUptimes(player) });
+
+// --- modes ------------------------------------------------------------------
+
+const MODES = {
+  async topgear(job) {
+    const sim = await simVariants(job, job.variants);
+    if (!sim) return null;
+    // Kept so single sets can be simmed in detail or across fight styles later.
+    job.keep = {
+      parsed: job.parsed, options: job.options,
+      lines: new Map(job.variants.map((v) => [v.name, v.lines])),
+    };
+    const result = {
+      baseline: sim.final.baseline,
+      baselineDetail: details(sim.final.player),
+      rows: sim.rows,
+      smart: sim.smart,
+      simc: sim.final.version ?? simcVersion,
+    };
+    lastRun = { sets: job.variants.length, seconds: Math.round((Date.now() - job.startedAt) / 1000), smart: sim.smart, at: Date.now() };
+    await history.record(job.parsed, job.options, result, job.variants.length).catch(() => {});
+    return result;
+  },
+
+  async weights(job) {
+    const { parsed } = job;
+    const main = mainStat(parsed.className, parsed.spec);
+    job.progress = { stages: 1, phase: 'scaling' };
+    const run = await runSimc(job, { scale: scaleOnly(main) });
+    if (!run) return null;
+    return { baseline: run.baseline, ...statWeights(run.player, parsed.className, parsed.spec), simc: run.version };
+  },
+
+  async crests(job) {
+    const sim = await simVariants(job, job.variants);
+    if (!sim) return null;
+    // Best slot per item and rank.
+    const best = new Map();
+    for (const row of sim.rows) {
+      const key = `${row.itemKey}:${row.level}`;
+      if (!best.has(key)) best.set(key, row);
+    }
+    return { baseline: sim.final.baseline, rows: [...best.values()], smart: sim.smart, simc: sim.final.version };
+  },
+
+  async vault(job) {
+    const variants = vaultVariants(job.parsed, job.options);
+    const sim = await simVariants(job, variants);
+    if (!sim) return null;
+    // Best slot per reward.
+    const best = new Map();
+    for (const row of sim.rows) if (!best.has(row.vaultKey)) best.set(row.vaultKey, row);
+    return { baseline: sim.final.baseline, rows: [...best.values()], simc: sim.final.version };
+  },
+
+  async trinkets(job) {
+    const { series, variants } = job.trinkets;
+    const sim = await simVariants(job, variants);
+    if (!sim) return null;
+    const byName = new Map(sim.rows.map((r) => [r.name, r]));
+    const base = sim.final.baseline;
+    for (const s of series) {
+      for (const p of s.points) {
+        const best = p.names.map((n) => byName.get(n)).filter(Boolean).sort((a, b) => b.dps - a.dps)[0];
+        Object.assign(p, best
+          ? { dps: best.dps, error: best.error, delta: best.delta, slot: best.slot, estimate: best.estimate }
+          : { dps: base.dps, error: base.error, delta: 0 });
+        delete p.names;
+      }
+    }
+    return { baseline: base, series, simc: sim.final.version };
+  },
+
+  async styles(job) {
+    const out = [];
+    const { variants } = job;
+    for (const [i, scenario] of FIGHT_SCENARIOS.entries()) {
+      job.progress = { stages: FIGHT_SCENARIOS.length, label: scenario.label };
+      const options = { ...job.options, fightStyle: scenario.fightStyle, targets: scenario.targets };
+      const run = await runSimc(job, { variants, options, stage: i + 1 });
+      if (!run) return null;
+      out.push({
+        ...scenario,
+        baseline: run.baseline,
+        results: Object.fromEntries([...run.results].map(([name, r]) => [name, r])),
+      });
+    }
+    return { scenarios: out, names: variants.map((v) => v.name) };
+  },
+
+  async detail(job) {
+    job.progress = { stages: 1 };
+    const htmlPath = path.join(REPORT_DIR, `${job.id}.html`);
+    await fsp.mkdir(REPORT_DIR, { recursive: true });
+    const run = await runSimc(job, { actorLines: job.actorLines, htmlPath });
+    if (!run) return null;
+    return {
+      name: job.setName, dps: run.baseline.dps, margin: run.baseline.error,
+      ...details(run.player),
+      report: fs.existsSync(htmlPath) ? `/api/reports/${job.id}` : null,
+    };
+  },
+};
+
+// Raid vs M+ vs AoE, all at the user's precision.
+const FIGHT_SCENARIOS = [
+  { key: 'st', label: 'Single target', note: 'Patchwerk, 1 target', fightStyle: 'Patchwerk', targets: 1 },
+  { key: 'cleave', label: 'Cleave', note: 'Patchwerk, 3 targets', fightStyle: 'Patchwerk', targets: 3 },
+  { key: 'aoe', label: 'AoE', note: 'Patchwerk, 8 targets', fightStyle: 'Patchwerk', targets: 8 },
+  { key: 'dungeon', label: 'Dungeon', note: 'Dungeon Slice (M+)', fightStyle: 'DungeonSlice', targets: 1 },
+];
+
 async function runJob(job) {
   running = job;
   job.state = 'running';
   job.startedAt = Date.now();
-  const { variants, options } = job;
-
   try {
-    const smart = options.smart && variants.length >= SMART_MIN_SETS && options.targetError < SMART_QUICK_ERROR;
-    let rows;
-    let final;
-    if (smart) {
-      job.progress = { stages: 2 };
-      const quick = await runSimc(job, variants, SMART_QUICK_ERROR, 1);
-      if (!quick) return;
-      const finalists = pickFinalists(variants, quick);
-      final = await runSimc(job, finalists, options.targetError, 2);
-      if (!final) return;
-      const kept = new Set(finalists.map((v) => v.name));
-      // Put quick-pass numbers on the final pass's baseline.
-      const shift = final.baseline.dps - quick.baseline.dps;
-      const quickRows = toRows(variants.filter((v) => !kept.has(v.name)), quick, true)
-        .map((r) => ({ ...r, dps: r.dps + shift }));
-      rows = [...toRows(finalists, final, false), ...quickRows];
-    } else {
-      job.progress = { stages: 1 };
-      final = await runSimc(job, variants, options.targetError, 1);
-      if (!final) return;
-      rows = toRows(variants, final, false);
-    }
-    rows.sort((a, b) => b.dps - a.dps);
-    job.result = {
-      baseline: final.baseline,
-      rows,
-      smart,
-      simc: final.version ?? simcVersion,
-      seconds: Math.round((Date.now() - job.startedAt) / 1000),
-    };
-    lastRun = { sets: variants.length, seconds: job.result.seconds, smart, at: Date.now() };
+    const result = await MODES[job.mode](job);
+    if (!result) return;
+    job.result = { ...result, seconds: Math.round((Date.now() - job.startedAt) / 1000) };
     job.state = 'done';
   } catch (err) {
     if (job.state !== 'cancelled') {
@@ -258,6 +373,7 @@ async function runJob(job) {
     job.child = null;
     job.parsed = null;
     job.variants = null;
+    job.trinkets = null;
     running = null;
     fsp.rm(path.join(WORK_DIR, job.id), { recursive: true, force: true }).catch(() => {});
     pump();
@@ -269,10 +385,15 @@ function pump() {
   runJob(queue.shift());
 }
 
-// Forget finished jobs after an hour.
+// Forget finished jobs after six hours, and their reports after a day.
 setInterval(() => {
-  const cutoff = Date.now() - 3_600_000;
+  const cutoff = Date.now() - 6 * 3_600_000;
   for (const [id, job] of jobs) if (job.finishedAt && job.finishedAt < cutoff) jobs.delete(id);
+  fsp.readdir(REPORT_DIR).then((files) => Promise.all(files.map(async (f) => {
+    const file = path.join(REPORT_DIR, f);
+    const { mtimeMs } = await fsp.stat(file);
+    if (mtimeMs < Date.now() - 86_400_000) await fsp.rm(file, { force: true });
+  }))).catch(() => {});
 }, 600_000).unref();
 
 // --- http -------------------------------------------------------------------
@@ -310,37 +431,74 @@ async function serveStatic(res, urlPath) {
   }
 }
 
-async function handleSim(req, res) {
-  const body = await readBody(req);
-  if (typeof body.profile !== 'string' || !body.profile.trim()) {
-    return send(res, 400, { error: 'Paste your SimC addon export first.' });
-  }
-  const parsed = parseProfile(body.profile);
-  if (!parsed.className) return send(res, 400, { error: 'Could not find a character in that text.' });
+const MODE_NAMES = new Set(Object.keys(MODES));
 
+// Builds a job for any mode. Detail and fight-style runs reuse a finished Top Gear job.
+function prepareJob(body) {
+  const mode = MODE_NAMES.has(body.mode) ? body.mode : 'topgear';
+  if (mode === 'detail' || mode === 'styles') {
+    const src = jobs.get(String(body.source ?? ''))?.keep;
+    if (!src) throw new Error('Those results have expired. Run the sim again.');
+    const job = { mode, parsed: src.parsed, options: src.options };
+    if (mode === 'detail') {
+      const name = String(body.name ?? 'baseline');
+      const lines = name === 'baseline' ? [] : src.lines.get(name);
+      if (!lines) throw new Error('That set is no longer available.');
+      return { ...job, setName: name, actorLines: lines, count: 1 };
+    }
+    const names = (Array.isArray(body.names) ? body.names : []).map(String).filter((n) => src.lines.has(n)).slice(0, 20);
+    const variants = names.map((name) => ({ name, kind: 'set', lines: src.lines.get(name) }));
+    return { ...job, variants, count: variants.length };
+  }
+
+  if (typeof body.profile !== 'string' || !body.profile.trim()) throw new Error('Paste your SimC addon export first.');
+  const parsed = parseProfile(body.profile);
+  if (!parsed.className) throw new Error('Could not find a character in that text.');
   const options = normalizeOptions(body.options);
+
+  if (mode === 'weights') return { mode, parsed, options, count: 5 };
+  if (mode === 'crests') {
+    const variants = crestVariants(parsed);
+    if (!variants.length) throw new Error('Nothing to upgrade: your gear and bag items are already at max rank.');
+    return { mode, parsed, options, variants, count: variants.length };
+  }
+  if (mode === 'vault') {
+    const variants = vaultVariants(parsed, options);
+    if (!variants.length) {
+      throw new Error('This export has no Great Vault rewards. Open the Great Vault in game, then type /simc again.');
+    }
+    return { mode, parsed, options, variants, count: variants.length };
+  }
+  if (mode === 'trinkets') {
+    const trinkets = trinketVariants(parsed);
+    if (!trinkets.variants.length) throw new Error('No trinkets to chart. Your trinkets are already at max rank and none are in your bags.');
+    return { mode, parsed, options, variants: trinkets.variants, trinkets, count: trinkets.variants.length };
+  }
+
   const selected = Array.isArray(body.selected) ? body.selected.map(String) : [];
   const wanted = new Set(Array.isArray(body.loadouts) ? body.loadouts.map(String) : []);
   const loadouts = parsed.loadouts.filter((l) => wanted.has(l.name));
+  const extra = deriveItems(parsed, options.modified, options.budget);
+  const combos = buildCombos(parsed, selected, Infinity, { extra, budget: options.budget });
+  const variants = buildVariants(parsed, combos, loadouts, options);
+  if (!variants.length) throw new Error('Nothing to compare. Tick some gear, gems, consumables or talent loadouts.');
+  return { mode, parsed, options, variants, count: variants.length };
+}
 
-  let variants;
+async function handleSim(req, res) {
+  let spec;
   try {
-    const extra = deriveItems(parsed, options.modified, options.budget);
-    const combos = buildCombos(parsed, selected, Infinity, { extra, budget: options.budget });
-    variants = buildVariants(parsed, combos, loadouts, options);
+    spec = prepareJob(await readBody(req));
   } catch (err) {
     return send(res, 400, { error: err.message });
   }
-  if (!variants.length) {
-    return send(res, 400, { error: 'Nothing to compare. Tick some gear, gems, consumables or talent loadouts.' });
-  }
-
+  const { count, ...rest } = spec;
   const job = {
     id: crypto.randomUUID(),
     state: 'queued',
-    parsed, variants, options,
-    comboCount: variants.length,
-    progress: { phase: 'queued', done: 0, total: variants.length },
+    ...rest,
+    comboCount: count,
+    progress: { phase: 'queued', done: 0, total: count },
     lastLine: '',
     queuedAt: Date.now(),
   };
@@ -348,6 +506,13 @@ async function handleSim(req, res) {
   queue.push(job);
   pump();
   send(res, 202, publicJob(job));
+}
+
+async function handleHistory(req, res, url) {
+  const name = url.searchParams.get('name') ?? '';
+  const server = url.searchParams.get('server') ?? '';
+  if (req.method === 'DELETE') await history.clear(name, server);
+  send(res, 200, { runs: await history.list(name, server) });
 }
 
 function buildScript() {
@@ -418,6 +583,18 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && url.pathname === '/api/sim') return await handleSim(req, res);
     if (url.pathname === '/api/update') return await handleUpdate(req, res, url);
+    if (url.pathname === '/api/history') return await handleHistory(req, res, url);
+
+    const report = url.pathname.match(/^\/api\/reports\/([0-9a-f-]{36})$/);
+    if (report && req.method === 'GET') {
+      try {
+        const html = await fsp.readFile(path.join(REPORT_DIR, `${report[1]}.html`));
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        return res.end(html);
+      } catch {
+        return send(res, 404, { error: 'That report has expired. Sim the set again to get a new one.' });
+      }
+    }
 
     const jobMatch = url.pathname.match(/^\/api\/jobs\/([0-9a-f-]{36})$/);
     if (jobMatch) {

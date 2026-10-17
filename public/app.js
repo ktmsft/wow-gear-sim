@@ -5,6 +5,10 @@ import { equippedSockets, buildGemSetups, describeStats } from '/lib/gems.js';
 import {
   SEASON, deriveItems, trackLabel, upgradeTrack, maxAffordableLevel, catalystTarget,
 } from '/lib/upgrades.js';
+import { esc, fmt, pct, duration, wowheadUrl } from './format.js';
+import {
+  detailHtml, weightsHtml, crestsHtml, vaultHtml, trinketsHtml, stylesHtml, historyHtml,
+} from './analysis.js';
 
 const STORAGE_KEY = 'gear-sim:profile';
 const SETTINGS_KEY = 'gear-sim:settings';
@@ -28,6 +32,14 @@ const els = {
   progressLine: $('progress-line'), cancel: $('cancel'),
   resultsCard: $('results-card'), results: $('results'), resultsMeta: $('results-meta'), best: $('best'),
   tabs: $('tabs'), estimateNote: $('estimate-note'),
+  moreCard: $('more-card'), toolError: $('tool-error'),
+  analysisCard: $('analysis-card'), analysisTitle: $('analysis-title'), analysisMeta: $('analysis-meta'),
+  analysisTabs: $('analysis-tabs'), analysis: $('analysis'),
+  historyCard: $('history-card'), history: $('history'),
+};
+
+const ANALYSIS_TITLES = {
+  weights: 'Stat weights', crests: 'Crest planner', vault: 'Great Vault', trinkets: 'Trinket chart', styles: 'Fight styles',
 };
 
 let parsed = null;
@@ -45,20 +57,21 @@ let threads = 8;
 let lastResult = null;
 let setTotal = 0;
 let activeTab = 'overview';
+let lastJobId = null;
+let openRow = null;
+const details = new Map();
+const detailJobs = new Set();
+const analyses = {};
+let analysisTab = null;
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
-  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-}[c]));
-const fmt = (n) => Math.round(n).toLocaleString();
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 
 function storage(fn) {
   try { return fn(window.localStorage); } catch { return null; }
 }
 
-function wowheadUrl(item) {
-  const bonus = item.bonusIds ? `?bonus=${item.bonusIds.split('/').join(':')}` : '';
-  return `https://www.wowhead.com/item=${item.id}${bonus}`;
-}
+
 
 function equippedInGroup(group) {
   const slots = PAIR_GROUPS[group] ?? [group];
@@ -306,11 +319,6 @@ function renderLoadouts() {
     </label>`).join('');
 }
 
-function duration(s) {
-  if (s < 60) return `${Math.max(5, Math.round(s / 5) * 5)} sec`;
-  if (s < 3600) return `${Math.round(s / 60)} min`;
-  return `${(s / 3600).toFixed(1)} hr`;
-}
 
 function updateCount() {
   if (!parsed) return;
@@ -338,6 +346,19 @@ function updateCount() {
       + (total >= LARGE_RUN ? ' · <span class="warn">large run, this can take a long time</span>' : '');
   }
   els.run.disabled = over || total === 0 || !!currentJob;
+  updateTools();
+}
+
+function updateTools() {
+  const vault = parsed?.vault?.length ?? 0;
+  $('vault-note').textContent = vault
+    ? `${vault} reward${vault === 1 ? '' : 's'} in your export.`
+    : 'No rewards in this export. Open the Great Vault in game, then type /simc again.';
+  $('styles-note').textContent = lastJobId ? 'Uses your top sets from the last main sim.' : 'Run the main sim first.';
+  for (const b of document.querySelectorAll('.tool-run')) {
+    b.disabled = !!currentJob || (b.dataset.mode === 'styles' && !lastJobId) || (b.dataset.mode === 'vault' && !vault);
+  }
+  $('styles-btn').disabled = !!currentJob || !lastJobId;
 }
 
 function saveSettings() {
@@ -373,7 +394,7 @@ function showGuide(show) {
 function loadProfile(text) {
   els.formError.hidden = true;
   showGuide(!text.trim());
-  const cards = [els.gearCard, els.gemCard, els.consumableCard, els.talentCard, els.optionsCard];
+  const cards = [els.gearCard, els.gemCard, els.consumableCard, els.talentCard, els.optionsCard, els.moreCard, els.historyCard];
   if (!text.trim()) {
     parsed = null;
     els.character.hidden = true;
@@ -401,7 +422,9 @@ function loadProfile(text) {
   els.gearCard.hidden = false;
   els.consumableCard.hidden = false;
   els.optionsCard.hidden = false;
+  els.moreCard.hidden = false;
   updateCount();
+  loadHistory();
 }
 
 // --- running --------------------------------------------------------------------
@@ -436,37 +459,65 @@ function showProgress(job) {
   const known = phase === 'profilesets' && total > 0;
   bar.classList.toggle('indeterminate', !known);
   els.barFill.style.width = known ? `${(done / total) * 100}%` : '';
-  const prefix = stages > 1 ? (stage === 1 ? 'Quick pass: ' : 'Final pass: ') : '';
+  const prefix = job.progress?.label ? `${job.progress.label} (${stage} of ${stages}): `
+    : stages > 1 ? (stage === 1 ? 'Quick pass: ' : 'Final pass: ') : '';
   els.progressText.textContent = job.state === 'queued'
     ? `Waiting in queue (position ${job.position})…`
+    : job.mode === 'weights' ? 'Working out stat weights (one sim per stat)…'
     : known ? `${prefix}set ${done} of ${total}…`
     : phase === 'baseline' ? `${prefix}simulating your current setup…` : `${prefix}starting SimulationCraft…`;
   els.progressLine.textContent = job.lastLine ?? '';
 }
 
-async function run() {
+function showError(mode, message) {
+  const el = mode === 'topgear' ? els.formError : els.toolError;
+  el.textContent = message;
+  el.hidden = false;
+}
+
+// Up to 10 sets for the fight-style comparison: each kind's best, then the top overall.
+function styleCandidates() {
+  const rows = lastResult.rows.filter((r) => !r.estimate);
+  const picks = [];
+  const add = (r) => { if (r && !picks.includes(r) && picks.length < 10) picks.push(r); };
+  for (const kind of Object.keys(KIND_LABELS)) add(rows.find((r) => r.kind === kind));
+  for (const r of rows) add(r);
+  return picks;
+}
+
+async function runMode(mode) {
   els.formError.hidden = true;
-  if (setTotal >= LARGE_RUN && !confirm(`${setTotal.toLocaleString()} sets can take a long time, possibly hours. You can cancel at any point. Run it?`)) return;
-  const loadoutIdx = [...els.loadouts.querySelectorAll('input:checked')].map((i) => Number(i.dataset.loadout));
+  els.toolError.hidden = true;
+  let body;
+  if (mode === 'topgear') {
+    if (setTotal >= LARGE_RUN && !confirm(`${setTotal.toLocaleString()} sets can take a long time, possibly hours. You can cancel at any point. Run it?`)) return;
+    const loadoutIdx = [...els.loadouts.querySelectorAll('input:checked')].map((i) => Number(i.dataset.loadout));
+    body = {
+      mode,
+      profile: els.profile.value,
+      selected: [...selected],
+      loadouts: loadoutIdx.map((i) => parsed.loadouts[i].name),
+      options: readOptions(),
+    };
+  } else if (mode === 'styles') {
+    body = { mode, source: lastJobId, names: styleCandidates().map((r) => r.name) };
+  } else {
+    body = { mode, profile: els.profile.value, options: readOptions() };
+  }
   try {
     const job = await api('/api/sim', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        profile: els.profile.value,
-        selected: [...selected],
-        loadouts: loadoutIdx.map((i) => parsed.loadouts[i].name),
-        options: readOptions(),
-      }),
+      body: JSON.stringify(body),
     });
     currentJob = job.id;
-    els.resultsCard.hidden = true;
+    if (mode === 'topgear') els.resultsCard.hidden = true;
     els.progressCard.hidden = false;
+    els.progressCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
     updateCount();
     poll();
   } catch (err) {
-    els.formError.textContent = err.message;
-    els.formError.hidden = false;
+    showError(mode, err.message);
   }
 }
 
@@ -488,30 +539,48 @@ async function poll() {
 function finish(job) {
   currentJob = null;
   els.progressCard.hidden = true;
-  updateCount();
-  refreshStatus();
-  if (job.state === 'done') {
+  const mode = job.mode ?? 'topgear';
+  if (job.state === 'done' && mode === 'topgear') {
     lastResult = job.result;
+    lastJobId = job.id;
+    details.clear();
+    openRow = null;
     activeTab = 'overview';
     renderResults();
+    loadHistory();
+  } else if (job.state === 'done') {
+    analyses[mode] = { result: job.result, rows: lastResult ? new Map(lastResult.rows.map((r) => [r.name, r])) : new Map() };
+    analysisTab = mode;
+    renderAnalysis(true);
   } else if (job.state === 'error') {
-    els.formError.textContent = job.error;
-    els.formError.hidden = false;
+    showError(mode, job.error);
   }
+  updateCount();
+  refreshStatus();
 }
 
 // --- results ----------------------------------------------------------------------
 
-function describe(row) {
-  if (row.kind === 'baseline') return '<span class="change">Current setup</span>';
-  if (row.kind === 'talents') return `<span class="change"><span class="slotname">Talents</span>${esc(row.loadout)}</span>`;
-  if (row.kind === 'consumable') return `<span class="change">${esc(row.label)} <span class="ilvl">${esc(row.detail)}</span></span>`;
-  if (row.kind === 'gems') {
-    return `<span class="change">${esc(row.label)}</span><span class="change ilvl">${esc(describeStats(row.gems))}</span>`;
+const chip = (label, body) => `<span class="chg">${label ? `<span class="chg-slot">${esc(label)}</span>` : ''}<span class="chg-body">${body}</span></span>`;
+
+// One chip per change: slot label over the item (or gem, consumable, loadout).
+// bare: drop the label for non-gear rows where the heading already says it.
+function changeChips(row, bare = false) {
+  const lbl = (text) => (bare ? '' : text);
+  if (row.kind === 'baseline') return chip('Equipped', '<span class="chg-name">Your current gear</span>');
+  if (row.kind === 'talents') return chip(lbl('Talents'), `<span class="chg-name">${esc(row.loadout)}</span>`);
+  if (row.kind === 'consumable') {
+    const [cat, name] = row.label.split(': ');
+    return chip(lbl(cat), `<span class="chg-name" title="${esc(row.detail)}">${esc(name ?? row.label)}</span>`);
   }
-  return row.changes.map((c) => `
-    <span class="change"><span class="slotname">${SLOT_LABELS[c.slot] ?? c.slot}</span><a href="${wowheadUrl(c)}" target="_blank" rel="noopener">${esc(c.name)}</a> <span class="ilvl">${c.ilvl ?? ''}</span>${(c.mods ?? []).map((m) => ` <span class="tag mod">${esc(m)}</span>`).join('')}</span>`).join('');
+  if (row.kind === 'gems') {
+    return chip(lbl('Gems'), `<span class="chg-name">${esc(row.label)}</span><span class="chg-sub">${esc(describeStats(row.gems))}</span>`);
+  }
+  return row.changes.map((c) => chip(SLOT_LABELS[c.slot] ?? c.slot, `
+    <a class="chg-name item" href="${wowheadUrl(c)}" target="_blank" rel="noopener">${esc(c.name)}</a>
+    <span class="chg-meta"><span class="ilvl-pill">${c.ilvl ?? ''}</span>${(c.mods ?? []).map((m) => `<span class="tag mod">${esc(m)}</span>`).join('')}</span>`)).join('');
 }
+
 
 function bestByKind(result) {
   const margin = (row) => (row.error ?? 0) + (result.baseline.error ?? 0);
@@ -557,28 +626,52 @@ function profileWith(winners) {
 function renderBest(result) {
   const best = bestByKind(result);
   const winners = Object.values(best);
+  const base = result.baseline.dps;
+  const stats = `
+    <div class="hero-stats">
+      <span><b>${result.rows.length.toLocaleString()}</b> sets</span>
+      <span><b>${duration(result.seconds ?? 0)}</b></span>
+      ${result.smart ? '<span><b>Smart</b> sim</span>' : ''}
+      <span>±<b>${fmt(result.baseline.error ?? 0)}</b> margin</span>
+    </div>`;
   if (!winners.length) {
-    els.best.className = 'best none';
-    els.best.innerHTML = '<h3>Keep what you have</h3><p class="hint">Nothing you ticked beats your current setup by more than the sim\'s margin of error.</p>';
+    els.best.className = 'hero keep';
+    els.best.innerHTML = `
+      <div class="hero-main">
+        <p class="hero-eyebrow">Verdict</p>
+        <h3 class="hero-title">Your equipped gear is the top gear</h3>
+        <p class="hero-sub">Nothing you ticked beats it by more than the sim's margin of error.</p>
+      </div>
+      <div class="hero-num">
+        <span class="hero-dps">${fmt(base)}</span>
+        <span class="hero-unit">DPS</span>
+      </div>
+      ${stats}`;
     return;
   }
   const total = winners.reduce((n, r) => n + r.delta, 0);
-  const label = (key, row) => {
-    if (row.kind === 'gear') return row.changes.map((c) => `${SLOT_LABELS[c.slot]}: <strong>${esc(c.name)}</strong> (${c.ilvl})`).join('<br>');
-    if (row.kind === 'gems') return `<strong>${esc(row.label)}</strong>`;
-    if (row.kind === 'consumable') return `<strong>${esc(row.label.split(': ')[1])}</strong>`;
-    return `<strong>${esc(row.loadout)}</strong>`;
-  };
+  const approx = winners.length > 1 ? '≈ ' : '';
   const keyName = (key) => key.startsWith('consumable:') ? CONSUMABLES[key.split(':')[1]].label : KIND_LABELS[key];
-  els.best.className = 'best';
+  els.best.className = 'hero win';
   els.best.innerHTML = `
-    <h3>Recommended changes: about +${fmt(total)} DPS (+${((total / result.baseline.dps) * 100).toFixed(2)}%)</h3>
-    <div class="best-grid">
-      ${Object.entries(best).map(([key, row]) => `
-        <span class="k">${esc(keyName(key))}</span><span>${label(key, row)}</span><span class="num delta pos">+${fmt(row.delta)}</span>`).join('')}
+    <div class="hero-main">
+      <p class="hero-eyebrow">${winners.length === 1 ? 'Upgrade found' : `${winners.length} upgrades found`}</p>
+      <h3 class="hero-title">${fmt(base)} <span class="arrow">→</span> ${approx}${fmt(base + total)} DPS</h3>
+      ${winners.length > 1 ? '<p class="hero-sub">Each change was simmed on its own, so the combined gain is approximate.</p>' : ''}
     </div>
-    ${winners.length > 1 ? '<p class="hint">Each change was measured on its own, so the combined gain is approximate.</p>' : ''}
-    <button type="button" id="copy-best">Copy SimC profile with these changes</button>`;
+    <div class="hero-num">
+      <span class="hero-dps">+${fmt(total)}</span>
+      <span class="gain-pill">${pct(total, base)}</span>
+    </div>
+    ${stats}
+    <div class="picks">
+      ${Object.entries(best).map(([key, row]) => `
+        <div class="pick">
+          <div class="pick-head"><span>${esc(keyName(key))}</span><span class="pick-gain">+${fmt(row.delta)}</span></div>
+          <div class="pick-body">${changeChips(row, true)}</div>
+        </div>`).join('')}
+    </div>
+    <button type="button" id="copy-best" class="action">Copy SimC profile with these changes</button>`;
   $('copy-best').onclick = async (e) => {
     await navigator.clipboard.writeText(profileWith(winners));
     e.target.textContent = 'Copied';
@@ -599,27 +692,152 @@ function renderTable(result) {
   const pool = activeTab === 'overview' ? result.rows.slice(0, 50) : result.rows.filter((r) => r.kind === activeTab);
   const rows = [...pool, { kind: 'baseline', dps: result.baseline.dps, error: result.baseline.error, delta: 0, deltaPct: 0 }]
     .sort((a, b) => b.dps - a.dps);
-  const top = rows[0].dps;
-  const low = rows[rows.length - 1].dps;
+  // Shared scale so the range bars line up with the equipped marker.
+  const lo = Math.min(...rows.map((r) => r.dps - (r.error ?? 0)));
+  const hi = Math.max(...rows.map((r) => r.dps + (r.error ?? 0)));
+  const span = hi - lo || 1;
+  const at = (v) => (5 + ((v - lo) / span) * 90).toFixed(2);
+  const baseErr = result.baseline.error ?? 0;
   els.results.innerHTML = rows.map((row, i) => {
-    const width = top === low ? 100 : 15 + ((row.dps - low) / (top - low)) * 85;
-    const cls = row.delta > 0 ? 'pos' : row.delta < 0 ? 'neg' : '';
-    const sign = row.delta > 0 ? '+' : '';
+    const isBase = row.kind === 'baseline';
+    const err = row.error ?? 0;
+    const side = !isBase && Math.abs(row.delta) <= err + baseErr;
+    const cls = isBase ? 'base' : side ? 'side' : row.delta > 0 ? 'pos' : 'neg';
     const approx = row.estimate ? '≈' : '';
+    const delta = isBase ? 'Baseline'
+      : `${approx}${row.delta > 0 ? '+' : ''}${fmt(row.delta)}<small>${pct(row.delta, result.baseline.dps)}</small>`;
     return `
-      <tr class="${row.kind === 'baseline' ? 'baseline' : ''} ${row.estimate ? 'estimate' : ''}">
-        <td>${i + 1}</td>
-        <td>${describe(row)}</td>
-        <td class="num">${approx}${fmt(row.dps)}${row.error ? `<div class="err">±${fmt(row.error)}</div>` : ''}<div class="dpsbar" style="width:${width}%"></div></td>
-        <td class="num"><span class="delta ${cls}">${row.kind === 'baseline' ? '-' : `${approx}${sign}${fmt(row.delta)}<div class="err">${sign}${row.deltaPct.toFixed(2)}%</div>`}</span></td>
-      </tr>`;
+      <div class="rank-row ${cls}${row.estimate ? ' estimate' : ''}${i === 0 && row.delta > 0 ? ' lead' : ''}" role="listitem"
+        data-name="${esc(row.name ?? 'baseline')}" tabindex="0" aria-expanded="false" title="Show the damage breakdown">
+        <span class="rank-n">${i + 1}</span>
+        <div class="rank-chgs">${changeChips(row)}</div>
+        <div class="plot" aria-hidden="true" title="${fmt(row.dps - err)} to ${fmt(row.dps + err)} DPS">
+          <span class="plot-base" style="left:${at(result.baseline.dps)}%"></span>
+          <span class="plot-range" style="left:${at(row.dps - err)}%;right:${(100 - at(row.dps + err)).toFixed(2)}%"></span>
+          <span class="plot-dot" style="left:${at(row.dps)}%"></span>
+        </div>
+        <span class="rank-dps">${approx}${fmt(row.dps)}<small>±${fmt(err)}</small></span>
+        <span class="rank-delta">${delta}</span>
+      </div>`;
   }).join('');
   els.estimateNote.hidden = !pool.some((r) => r.estimate);
+  if (openRow) showDrawer(openRow);
+}
+
+// --- set details ----------------------------------------------------------------
+
+function rowEl(name) {
+  return [...els.results.querySelectorAll('.rank-row')].find((r) => r.dataset.name === name);
+}
+
+function drawerContent(name) {
+  const isBase = name === 'baseline';
+  const detail = details.get(name) ?? (isBase ? lastResult.baselineDetail : null);
+  return detailHtml(detail, lastResult.baselineDetail, { isBase, loading: detailJobs.has(name) });
+}
+
+function showDrawer(name) {
+  els.results.querySelector('.drawer')?.remove();
+  for (const r of els.results.querySelectorAll('.rank-row[aria-expanded="true"]')) r.setAttribute('aria-expanded', 'false');
+  const row = rowEl(name);
+  if (!row) return;
+  row.setAttribute('aria-expanded', 'true');
+  const drawer = document.createElement('div');
+  drawer.className = 'drawer';
+  drawer.dataset.for = name;
+  drawer.innerHTML = drawerContent(name);
+  row.after(drawer);
+}
+
+function refreshDrawer(name) {
+  const drawer = els.results.querySelector('.drawer');
+  if (drawer?.dataset.for === name) drawer.innerHTML = drawerContent(name);
+}
+
+function toggleRow(name) {
+  if (openRow === name) {
+    openRow = null;
+    els.results.querySelector('.drawer')?.remove();
+    rowEl(name)?.setAttribute('aria-expanded', 'false');
+    return;
+  }
+  openRow = name;
+  showDrawer(name);
+  if (name !== 'baseline' && !details.has(name)) requestDetail(name);
+}
+
+// Sims one set on its own for its breakdown and the full SimulationCraft report.
+async function requestDetail(name) {
+  if (detailJobs.has(name) || !lastJobId) return;
+  detailJobs.add(name);
+  refreshDrawer(name);
+  try {
+    let job = await api('/api/sim', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: 'detail', source: lastJobId, name }),
+    });
+    while (job.state === 'queued' || job.state === 'running') {
+      await sleep(700);
+      job = await api(`/api/jobs/${job.id}`);
+    }
+    details.set(name, job.state === 'done' ? job.result : { error: job.error ?? 'The detail sim was cancelled.' });
+  } catch (err) {
+    details.set(name, { error: err.message });
+  } finally {
+    detailJobs.delete(name);
+    refreshDrawer(name);
+  }
+}
+
+// --- extra sims -----------------------------------------------------------------
+
+function renderAnalysis(scroll = false) {
+  const modes = Object.keys(ANALYSIS_TITLES).filter((m) => analyses[m]);
+  if (!modes.length) return;
+  if (!analyses[analysisTab]) analysisTab = modes[0];
+  const { result, rows } = analyses[analysisTab];
+  els.analysisTitle.textContent = ANALYSIS_TITLES[analysisTab];
+  els.analysisMeta.textContent = `${duration(result.seconds ?? 0)}${result.simc ? ` · SimulationCraft ${result.simc}` : ''}`;
+  els.analysisTabs.hidden = modes.length < 2;
+  els.analysisTabs.innerHTML = modes.map((m) => `
+    <button type="button" role="tab" data-analysis="${m}" aria-selected="${m === analysisTab}">${ANALYSIS_TITLES[m]}</button>`).join('');
+  const describe = (name) => {
+    const row = rows.get(name);
+    return row ? `<div class="rank-chgs">${changeChips(row)}</div>` : esc(name);
+  };
+  els.analysis.innerHTML = {
+    weights: () => weightsHtml(result),
+    crests: () => crestsHtml(result, crests, SLOT_LABELS),
+    vault: () => vaultHtml(result, parsed?.equipped ?? {}, SLOT_LABELS),
+    trinkets: () => trinketsHtml(result),
+    styles: () => stylesHtml(result, describe),
+  }[analysisTab]();
+  els.analysisCard.hidden = false;
+  if (scroll) els.analysisCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// --- history --------------------------------------------------------------------
+
+function characterKey() {
+  const server = parsed.charLines.find((l) => l.startsWith('server='))?.slice(7).replace(/^"|"$/g, '') ?? '';
+  return new URLSearchParams({ name: parsed.name ?? '', server }).toString();
+}
+
+async function loadHistory(clear = false) {
+  if (!parsed?.className) return;
+  try {
+    const { runs } = await api(`/api/history?${characterKey()}`, clear ? { method: 'DELETE' } : undefined);
+    els.historyCard.hidden = !runs.length;
+    if (runs.length) els.history.innerHTML = historyHtml(runs);
+  } catch {
+    els.historyCard.hidden = true;
+  }
 }
 
 function renderResults() {
   const result = lastResult;
-  els.resultsMeta.textContent = `${result.rows.length} sets in ${duration(result.seconds ?? 0)}${result.smart ? ' · smart sim' : ''} · ${result.simc ?? 'SimulationCraft'}`;
+  els.resultsMeta.textContent = result.simc ? `SimulationCraft ${result.simc}` : '';
   renderBest(result);
   renderTabs(result);
   renderTable(result);
@@ -707,7 +925,50 @@ for (const id of ['fightStyle', 'targets', 'duration', 'targetError', 'smart']) 
   $(id).addEventListener('change', () => { saveSettings(); updateCount(); });
 }
 
-els.run.addEventListener('click', run);
+els.run.addEventListener('click', () => runMode('topgear'));
+
+$('styles-btn').addEventListener('click', () => runMode('styles'));
+
+els.moreCard.addEventListener('click', (e) => {
+  const mode = e.target.closest('.tool-run')?.dataset.mode;
+  if (mode) runMode(mode);
+});
+
+els.results.addEventListener('click', (e) => {
+  if (e.target.closest('a')) return;
+  if (e.target.closest('[data-report]')) {
+    requestDetail(e.target.closest('.drawer').dataset.for);
+    return;
+  }
+  const row = e.target.closest('.rank-row');
+  if (row) toggleRow(row.dataset.name);
+});
+
+els.results.addEventListener('keydown', (e) => {
+  const row = e.target.closest('.rank-row');
+  if (row && (e.key === 'Enter' || e.key === ' ')) {
+    e.preventDefault();
+    toggleRow(row.dataset.name);
+  }
+});
+
+els.analysisCard.addEventListener('click', async (e) => {
+  const tab = e.target.closest('[data-analysis]')?.dataset.analysis;
+  if (tab) {
+    analysisTab = tab;
+    renderAnalysis();
+    return;
+  }
+  const copy = e.target.closest('[data-copy]');
+  if (copy) {
+    await navigator.clipboard.writeText($(copy.dataset.copy).textContent);
+    copy.textContent = 'Copied';
+  }
+});
+
+$('history-clear').addEventListener('click', () => {
+  if (confirm('Clear the saved DPS history for this character?')) loadHistory(true);
+});
 els.cancel.addEventListener('click', async () => {
   if (currentJob) await api(`/api/jobs/${currentJob}`, { method: 'DELETE' }).catch(() => {});
   finish({ state: 'cancelled' });

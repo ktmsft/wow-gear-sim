@@ -187,6 +187,48 @@ neck=,id=272229,gem_id=240906,…
       <p id="form-error" class="error" hidden></p>
     </section>
 
+    <section class="card" id="more-card" hidden>
+      <div class="card-head">
+        <h2><span class="step">8</span> More sims <span class="optional">optional</span></h2>
+      </div>
+      <p class="hint">Each one uses the fight settings above and runs on its own.</p>
+      <div class="tools">
+        <div class="tool">
+          <div class="tool-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div>
+          <h3>Stat weights</h3>
+          <p>How much DPS each stat is worth to you, plus a Pawn string.</p>
+          <button type="button" class="tool-run" data-mode="weights">Run</button>
+        </div>
+        <div class="tool">
+          <div class="tool-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l3 6 6 .9-4.5 4.3 1 6.3L12 17.5 6.5 20.5l1-6.3L3 9.9 9 9z"/></svg></div>
+          <h3>Crest planner</h3>
+          <p>Which upgrades give the most DPS for your Mistcrests.</p>
+          <button type="button" class="tool-run" data-mode="crests">Run</button>
+        </div>
+        <div class="tool">
+          <div class="tool-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10h18v10H3zM3 10l2-5h14l2 5M12 10v10M9 14h6"/></svg></div>
+          <h3>Great Vault</h3>
+          <p>Which reward to take this week.</p>
+          <p class="tool-note" id="vault-note"></p>
+          <button type="button" class="tool-run" data-mode="vault">Run</button>
+        </div>
+        <div class="tool">
+          <div class="tool-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 18l5-6 4 3 7-9M15 6h4v4"/></svg></div>
+          <h3>Trinket chart</h3>
+          <p>Your trinkets at every upgrade level.</p>
+          <button type="button" class="tool-run" data-mode="trinkets">Run</button>
+        </div>
+        <div class="tool">
+          <div class="tool-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/></svg></div>
+          <h3>Fight styles</h3>
+          <p>Your best Top Gear sets in raid, cleave, AoE and M+.</p>
+          <p class="tool-note" id="styles-note">Run the main sim first.</p>
+          <button type="button" class="tool-run" data-mode="styles">Run</button>
+        </div>
+      </div>
+      <p id="tool-error" class="error" hidden></p>
+    </section>
+
     <section class="card" id="progress-card" hidden>
       <div class="card-head">
         <h2>Simulating</h2>
@@ -203,15 +245,37 @@ neck=,id=272229,gem_id=240906,…
         <span id="results-meta" class="hint"></span>
       </div>
       <div id="best" class="best"></div>
-      <div id="tabs" class="tabs" role="tablist"></div>
-      <div class="table-wrap">
-        <table class="results">
-          <thead><tr><th>#</th><th>Change</th><th class="num">DPS</th><th class="num">vs. now</th></tr></thead>
-          <tbody id="results"></tbody>
-        </table>
+      <div class="results-actions">
+        <button type="button" class="action" id="styles-btn">Compare the top sets across fight styles</button>
+        <span class="hint">Click any row for its damage breakdown and full report.</span>
       </div>
+      <div id="tabs" class="tabs" role="tablist"></div>
+      <div class="rank-legend">
+        <span><i class="lg-dot"></i>DPS with its margin of error</span>
+        <span><i class="lg-base"></i>Equipped</span>
+        <span><i class="lg-side"></i>Sidegrade (within the margin)</span>
+      </div>
+      <div id="results" class="rank" role="list"></div>
       <p id="estimate-note" class="hint" hidden>≈ marks quick-pass estimates that didn't make the final round. They're less precise, but well behind the leaders.</p>
     </section>
+    <section class="card" id="analysis-card" hidden>
+      <div class="card-head">
+        <h2 id="analysis-title"></h2>
+        <span id="analysis-meta" class="hint"></span>
+      </div>
+      <div id="analysis-tabs" class="tabs" role="tablist"></div>
+      <div id="analysis"></div>
+    </section>
+
+    <section class="card" id="history-card" hidden>
+      <div class="card-head">
+        <h2>DPS history</h2>
+        <button type="button" class="link" id="history-clear">Clear history</button>
+      </div>
+      <p class="hint">Every main sim for this character is saved on this PC.</p>
+      <div id="history"></div>
+    </section>
+
     <section class="card" id="engine-card" hidden>
       <div class="card-head">
         <h2>SimulationCraft engine</h2>

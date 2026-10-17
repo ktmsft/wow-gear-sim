@@ -14,7 +14,16 @@ It works for any class and spec. Everything comes from your export, and runs ent
 - **Consumables:** food, flask, potion, weapon oil and augment rune.
 - **Talents:** your saved loadouts from the export.
 - **Smart sim:** a quick pass over everything, then re-sims the top results and anything statistically tied with them at full precision.
-- **Results:** a recommended combination and a profile you can copy to double-check on Raidbots.
+- **Results:** the verdict up top, then every set ranked with its margin of error. Click any row for its damage breakdown by ability, buff and proc uptimes, and the full SimulationCraft report. You can copy a profile with the winning changes to double-check on Raidbots.
+- **DPS history:** every main sim is saved on your PC, so you can watch your DPS climb as you gear up.
+
+### More sims
+
+- **Stat weights:** what each stat is worth to you, your stat priority, and a Pawn string for in-game upgrade arrows.
+- **Crest planner:** every upgrade you could buy, ranked by DPS gained per Mistcrest. Free ranks are marked.
+- **Great Vault:** sims each reward in your vault and tells you which one to take. Open the vault in game before you type `/simc`.
+- **Trinket chart:** your trinkets (equipped, bags and vault) at every upgrade rank, on one chart.
+- **Fight styles:** your best Top Gear sets simmed in single target, cleave, AoE and Dungeon Slice side by side.
 - **System info:** your CPU, threads, memory and last run speed. Very large runs ask before starting.
 
 ## Screenshots
@@ -22,6 +31,14 @@ It works for any class and spec. Everything comes from your export, and runs ent
 **Results:** every set ranked against what you have on now, with the margin of error. The top card sums up the changes worth making.
 
 ![Ranked sim results](docs/screenshots/results.png)
+
+**Set details:** click a row to see where the damage comes from, compared with your current gear.
+
+![Damage breakdown and buff uptimes for one set](docs/screenshots/details.png)
+
+**More sims:** stat weights, crest planner, Great Vault, trinket chart and fight styles.
+
+![Trinket chart](docs/screenshots/trinkets.png)
 
 **Upgrades, catalyst and gems:** your crests and catalyst charges come straight from the export.
 
@@ -76,6 +93,7 @@ On macOS or Linux, build simc with CMake (`cmake -S simc-src -B build -DBUILD_GU
 2. In game, type `/simc` and copy all the text in the window that opens. Include the bag items: those are what the tool compares.
 3. Paste it into the page. It reads your class, spec, talents, gear and saved loadouts.
 4. Tick the bag items, gems, consumables and loadouts you want to try, then pick a fight style and click **Run sim**.
+5. For stat weights, crest planning, the Great Vault, trinkets or fight styles, use the **More sims** card.
 
 "SimC default for your spec" uses SimulationCraft's recommended consumables for your class and spec.
 
@@ -94,6 +112,10 @@ The [Release workflow](.github/workflows/release.yml) builds SimulationCraft and
 The logo uses [Cormorant](https://fonts.google.com/specimen/Cormorant) by the Cormorant Project Authors, under the SIL Open Font License (`public/fonts/OFL.txt`).
 
 `simc.exe` is [SimulationCraft](https://github.com/simulationcraft/simc), licensed under GPL-3.0. Its license and source link ship in the zip's `licenses` folder.
+
+## Roadmap
+
+- **Droptimizer:** which dungeon or raid boss has the best drops for you. See [the plan](docs/droptimizer-plan.md).
 
 ## Settings
 

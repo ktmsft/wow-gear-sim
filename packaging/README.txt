@@ -14,6 +14,8 @@ SIMMING YOUR CHARACTER
 2. In game, type /simc and press Enter.
 3. In the window that opens, press Ctrl+A, then Ctrl+C to copy.
 4. Paste it into the SIMulacrum page, tick what you want to try, and click Run sim.
+5. Click any result for its damage breakdown. The "More sims" card has stat
+   weights, a crest planner, the Great Vault, a trinket chart and fight styles.
 
 UPDATES
 After a WoW patch, click "Check for updates" at the bottom of the page.
