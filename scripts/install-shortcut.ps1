@@ -10,7 +10,7 @@ $link = $shell.CreateShortcut($path)
 $link.TargetPath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
 $link.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcher`""
 $link.WorkingDirectory = $root
-$link.IconLocation = "$env:SystemRoot\System32\imageres.dll,144"
+$link.IconLocation = Join-Path $root 'packaging\simulacrum.ico'
 $link.Description = 'Open SIMulacrum (WoW gear simulator)'
 $link.Save()
 

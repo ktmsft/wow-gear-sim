@@ -1,6 +1,6 @@
 {
   "name": "wow-gear-sim",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "private": true,
   "type": "module",
   "description": "SIMulacrum - a local Top Gear for World of Warcraft, powered by SimulationCraft",
@@ -11,6 +11,7 @@
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
-    "postject": "^1.0.0-alpha.6"
+    "postject": "^1.0.0-alpha.6",
+    "rcedit": "^5.0.2"
   }
 }

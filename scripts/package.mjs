@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { inject } from 'postject';
+import { rcedit } from 'rcedit';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(ROOT, 'dist');
@@ -49,6 +50,21 @@ if (process.platform === 'win32') {
   try {
     execFileSync('signtool', ['remove', '/s', EXE], { stdio: 'ignore' });
   } catch { /* optional */ }
+  // Our icon and name instead of Node's; must happen before the app is injected.
+  const { version } = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  await rcedit(EXE, {
+    icon: path.join(ROOT, 'packaging', 'simulacrum.ico'),
+    'file-version': version,
+    'product-version': version,
+    'version-string': {
+      ProductName: 'SIMulacrum',
+      FileDescription: 'SIMulacrum - a locally run WoW gear sim',
+      CompanyName: 'bitofmoss',
+      LegalCopyright: 'MIT License',
+      OriginalFilename: 'SIMulacrum.exe',
+      InternalName: 'SIMulacrum',
+    },
+  });
 }
 await inject(EXE, 'NODE_SEA_BLOB', fs.readFileSync(blob), {
   sentinelFuse: 'NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2',
