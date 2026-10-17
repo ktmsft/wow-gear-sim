@@ -10,8 +10,9 @@ It works for any class and spec. Everything comes from your export, and runs ent
 - **Gems:** every way to fill your sockets with the gems you tick, plus diamond swaps.
 - **Consumables:** food, flask, potion, weapon oil and augment rune.
 - **Talents:** your saved loadouts from the export.
-- **Smart sim:** a quick pass over everything, then the best are re-simmed at full precision.
-- **Results:** a recommended combination, a profile you can copy to double-check on Raidbots, and a time estimate before you start.
+- **Smart sim:** a quick pass over everything, then re-sims the top results and anything statistically tied with them at full precision.
+- **Results:** a recommended combination and a profile you can copy to double-check on Raidbots.
+- **System info:** your CPU, threads, memory and last run speed. Very large runs ask before starting.
 
 ## Setup (Windows)
 

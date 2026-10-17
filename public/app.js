@@ -10,9 +10,7 @@ const SLOT_LABELS = {
 };
 const KIND_LABELS = { gear: 'Gear', gems: 'Gems', consumable: 'Consumables', talents: 'Talents' };
 
-// Mirrors the server's smart sim.
-const SMART_MIN_SETS = 40;
-const SMART_KEEP = { gear: 25, gems: 12, consumable: 40, talents: 20 };
+const LARGE_RUN = 5000;
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -38,6 +36,7 @@ let consumableCompare = {};
 let currentJob = null;
 let threads = 8;
 let lastResult = null;
+let setTotal = 0;
 let activeTab = 'overview';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
@@ -201,22 +200,6 @@ function renderLoadouts() {
     </label>`).join('');
 }
 
-function setSeconds(err) {
-  // Measured: ~0.11 s/set at ±1%, ~0.6 s at ±0.2% (16 threads, 300 s fight).
-  const duration = Number($('duration').value) || 300;
-  return (0.09 + 0.02 / err ** 2) * (duration / 300) * (16 / threads);
-}
-
-function estimate(counts) {
-  const total = Object.values(counts).reduce((a, b) => a + b, 0);
-  const err = Number($('targetError').value);
-  if ($('smart').checked && total >= SMART_MIN_SETS && err < 1) {
-    const finalists = Object.entries(counts).reduce((n, [k, c]) => n + Math.min(c, SMART_KEEP[k]), 0);
-    return { seconds: 10 + total * setSeconds(1) + finalists * setSeconds(err), smart: true, finalists };
-  }
-  return { seconds: 5 + total * setSeconds(err), smart: false };
-}
-
 function duration(s) {
   if (s < 60) return `${Math.max(5, Math.round(s / 5) * 5)} sec`;
   if (s < 3600) return `${Math.round(s / 60)} min`;
@@ -234,6 +217,7 @@ function updateCount() {
     talents: els.loadouts.querySelectorAll('input:checked').length,
   };
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  setTotal = total;
   els.gemCount.textContent = gems.error ?? (gems.n ? `${gems.n} gem setup${gems.n === 1 ? '' : 's'} to try` : '');
   const over = !!gems.error;
   const parts = Object.entries(counts).filter(([, n]) => n).map(([k, n]) => `${n.toLocaleString()} ${KIND_LABELS[k].toLowerCase()}`);
@@ -243,12 +227,9 @@ function updateCount() {
   } else if (!total) {
     els.count.innerHTML = 'Tick something to compare against your current setup.';
   } else {
-    const est = estimate(counts);
     els.count.innerHTML = `<strong>${total.toLocaleString()}</strong> ${total === 1 ? 'set' : 'sets'}`
       + (parts.length > 1 ? ` (${parts.join(', ')})` : '')
-      + ` · about <strong>${duration(est.seconds)}</strong>`
-      + (est.smart ? ` · smart sim re-checks the top ${est.finalists}` : '')
-      + (est.seconds > 3600 ? ' · long run; you can cancel any time' : '');
+      + (total >= LARGE_RUN ? ' · <span class="warn">large run, this can take a long time</span>' : '');
   }
   els.run.disabled = over || total === 0 || !!currentJob;
 }
@@ -346,6 +327,7 @@ function showProgress(job) {
 
 async function run() {
   els.formError.hidden = true;
+  if (setTotal >= LARGE_RUN && !confirm(`${setTotal.toLocaleString()} sets can take a long time, possibly hours. You can cancel at any point. Run it?`)) return;
   const loadoutIdx = [...els.loadouts.querySelectorAll('input:checked')].map((i) => Number(i.dataset.loadout));
   try {
     const job = await api('/api/sim', {
@@ -388,6 +370,7 @@ function finish(job) {
   currentJob = null;
   els.progressCard.hidden = true;
   updateCount();
+  refreshStatus();
   if (job.state === 'done') {
     lastResult = job.result;
     activeTab = 'overview';
@@ -602,7 +585,28 @@ els.cancel.addEventListener('click', async () => {
   finish({ state: 'cancelled' });
 });
 
+const gb = (bytes) => `${Math.round(bytes / 2 ** 30)} GB`;
+
+function renderSystem(s) {
+  const sys = s.system;
+  if (!sys) return;
+  const pills = [
+    ['CPU', sys.cpu],
+    ['Threads', `${sys.cores ? `${sys.cores} cores · ` : ''}${sys.threads} threads · sims use ${sys.simThreads}`],
+    ['Memory', `${gb(sys.memTotal)} (${gb(sys.memFree)} free)`],
+    ...(sys.gpus.length ? [['GPU', `${sys.gpus.join(', ')} · not used by SimulationCraft`]] : []),
+    ...(s.lastRun ? [['Last run', `${s.lastRun.sets.toLocaleString()} sets in ${duration(s.lastRun.seconds)}${s.lastRun.smart ? ' (smart sim)' : ''}`]] : []),
+  ];
+  $('system').innerHTML = pills.map(([k, v]) => `<span class="pill"><span class="k">${k}</span> ${esc(v)}</span>`).join('');
+  $('system').hidden = false;
+}
+
+function refreshStatus() {
+  api('/api/status').then(renderSystem).catch(() => {});
+}
+
 api('/api/status').then((s) => {
+  renderSystem(s);
   threads = s.threads || threads;
   els.engine.className = `engine ${s.simc ? 'ok' : 'missing'}`;
   els.engine.textContent = s.simc ? `${s.simc} · ${s.threads} threads` : 'SimulationCraft not installed. See README';

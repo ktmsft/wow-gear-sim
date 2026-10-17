@@ -37,6 +37,38 @@ function findSimc() {
 
 const SIMC = findSimc();
 let simcVersion = null;
+let lastRun = null;
+
+// Physical cores and GPUs need WMI on Windows; os only reports logical CPUs.
+function detectHardware() {
+  const hw = { cores: null, gpus: [] };
+  if (process.platform !== 'win32') return Promise.resolve(hw);
+  return new Promise((resolve) => {
+    const ps = spawn('powershell', ['-NoProfile', '-Command',
+      '(Get-CimInstance Win32_Processor | Measure-Object NumberOfCores -Sum).Sum; '
+      + '(Get-CimInstance Win32_VideoController).Name'], { windowsHide: true });
+    let out = '';
+    ps.stdout.on('data', (d) => { out += d; });
+    ps.on('error', () => resolve(hw));
+    ps.on('close', () => {
+      const [cores, ...gpus] = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      resolve({ cores: Number(cores) || null, gpus });
+    });
+  });
+}
+const hardware = detectHardware();
+
+async function systemInfo() {
+  const cpus = os.cpus();
+  return {
+    cpu: cpus[0]?.model.trim(),
+    threads: cpus.length,
+    ...(await hardware),
+    simThreads: THREADS,
+    memTotal: os.totalmem(),
+    memFree: os.freemem(),
+  };
+}
 
 function detectSimcVersion() {
   return new Promise((resolve) => {
@@ -85,6 +117,7 @@ function parseProgress(job, chunk) {
 // Smart sim: a quick pass over everything, then re-sim the best at full precision.
 const SMART_MIN_SETS = 40;
 const SMART_QUICK_ERROR = 1.0;
+// Minimum finalists per kind; anything statistically tied with the leader is also kept.
 const SMART_KEEP = { gear: 25, gems: 12, consumable: 40, talents: 20 };
 
 function readResults(json) {
@@ -140,9 +173,13 @@ function pickFinalists(variants, quick) {
   for (const v of variants) (byKind[v.kind] ??= []).push(v);
   const keep = new Set();
   for (const [kind, list] of Object.entries(byKind)) {
-    list.sort((a, b) => quick.results.get(b.name).dps - quick.results.get(a.name).dps)
-      .slice(0, SMART_KEEP[kind] ?? 20)
-      .forEach((v) => keep.add(v.name));
+    const r = (v) => quick.results.get(v.name);
+    list.sort((a, b) => r(b).dps - r(a).dps);
+    const best = r(list[0]);
+    list.forEach((v, i) => {
+      const close = best.dps - r(v).dps <= (best.error ?? 0) + (r(v).error ?? 0);
+      if (i < (SMART_KEEP[kind] ?? 20) || close) keep.add(v.name);
+    });
   }
   return variants.filter((v) => keep.has(v.name));
 }
@@ -199,6 +236,7 @@ async function runJob(job) {
       simc: final.version ?? simcVersion,
       seconds: Math.round((Date.now() - job.startedAt) / 1000),
     };
+    lastRun = { sets: variants.length, seconds: job.result.seconds, smart, at: Date.now() };
     job.state = 'done';
   } catch (err) {
     if (job.state !== 'cancelled') {
@@ -308,6 +346,8 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, {
         simc: simcVersion, simcPath: SIMC, threads: THREADS, queued: queue.length,
         buildScript: process.platform === 'win32' ? path.join(ROOT, 'scripts', 'build-simc.ps1') : null,
+        system: await systemInfo(),
+        lastRun,
       });
     }
     if (req.method === 'POST' && url.pathname === '/api/sim') return await handleSim(req, res);
