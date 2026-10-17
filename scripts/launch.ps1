@@ -19,7 +19,7 @@ if (-not (Test-Server)) {
   if (-not $node) { $node = Join-Path $env:ProgramFiles 'nodejs\node.exe' }
   if (-not (Test-Path $node)) {
     Add-Type -AssemblyName PresentationFramework
-    [System.Windows.MessageBox]::Show('Node.js is not installed. Get it from https://nodejs.org', 'SIMplicity') | Out-Null
+    [System.Windows.MessageBox]::Show('Node.js is not installed. Get it from https://nodejs.org', 'SIMulacrum') | Out-Null
     exit 1
   }
 

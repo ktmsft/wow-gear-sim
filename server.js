@@ -17,7 +17,7 @@ import { buildSimcInput, buildVariants, normalizeOptions } from './lib/simc-inpu
 import * as updater from './updater.js';
 import pkg from './package.json' with { type: 'json' };
 
-// Packaged as GearSim.exe, files sit next to the exe.
+// Packaged as SIMulacrum.exe, files sit next to the exe.
 const PACKAGED = isSea();
 const ROOT = PACKAGED ? path.dirname(process.execPath) : path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 8787);
@@ -456,10 +456,10 @@ server.on('error', (err) => {
 
 server.listen(PORT, HOST, async () => {
   simcVersion = await detectSimcVersion();
-  console.log(`SIMplicity is running at ${PAGE_URL}`);
+  console.log(`SIMulacrum is running at ${PAGE_URL}`);
   console.log(simcVersion ? `Using ${simcVersion}` : `SimulationCraft not found (looked for "${SIMC}").`);
   if (PACKAGED) {
-    console.log('\nKeep this window open while you use SIMplicity. Close it to quit.');
+    console.log('\nKeep this window open while you use SIMulacrum. Close it to quit.');
     if (!process.env.GEAR_SIM_NO_BROWSER) openBrowser(PAGE_URL);
   }
 });

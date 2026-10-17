@@ -611,7 +611,7 @@ function renderTable(result) {
         <td>${i + 1}</td>
         <td>${describe(row)}</td>
         <td class="num">${approx}${fmt(row.dps)}${row.error ? `<div class="err">±${fmt(row.error)}</div>` : ''}<div class="dpsbar" style="width:${width}%"></div></td>
-        <td class="num"><span class="delta ${cls}">${row.kind === 'baseline' ? '—' : `${approx}${sign}${fmt(row.delta)}<div class="err">${sign}${row.deltaPct.toFixed(2)}%</div>`}</span></td>
+        <td class="num"><span class="delta ${cls}">${row.kind === 'baseline' ? '-' : `${approx}${sign}${fmt(row.delta)}<div class="err">${sign}${row.deltaPct.toFixed(2)}%</div>`}</span></td>
       </tr>`;
   }).join('');
   els.estimateNote.hidden = !pool.some((r) => r.estimate);
@@ -743,7 +743,7 @@ function renderAppUpdate(app) {
   const show = app.available && app.page && !dismissed;
   $('app-update').hidden = !show;
   if (!show) return;
-  $('app-update-text').textContent = `SIMplicity ${app.latest} is available (you have ${app.current}).`;
+  $('app-update-text').textContent = `SIMulacrum ${app.latest} is available (you have ${app.current}).`;
   $('app-update-link').href = app.page;
   $('app-update-dismiss').onclick = () => {
     storage((s) => s.setItem(APP_DISMISS_KEY, app.latest));

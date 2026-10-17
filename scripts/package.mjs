@@ -1,4 +1,4 @@
-// Builds dist/SIMplicity: SIMplicity.exe (Node single executable) plus the web files.
+// Builds dist/SIMulacrum: SIMulacrum.exe (Node single executable) plus the web files.
 // Usage: node scripts/package.mjs [--simc path\to\simc.exe] [--simc-src path\to\simc-source]
 
 import fs from 'node:fs';
@@ -10,8 +10,8 @@ import { inject } from 'postject';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(ROOT, 'dist');
-const OUT = path.join(DIST, 'SIMplicity');
-const EXE = path.join(OUT, process.platform === 'win32' ? 'SIMplicity.exe' : 'SIMplicity');
+const OUT = path.join(DIST, 'SIMulacrum');
+const EXE = path.join(OUT, process.platform === 'win32' ? 'SIMulacrum.exe' : 'SIMulacrum');
 
 const arg = (name) => {
   const i = process.argv.indexOf(name);
@@ -34,7 +34,7 @@ await build({
   logLevel: 'error',
 });
 
-console.log('Building SIMplicity executable...');
+console.log('Building SIMulacrum executable...');
 const seaConfig = path.join(DIST, 'sea-config.json');
 const blob = path.join(DIST, 'sea-prep.blob');
 fs.writeFileSync(seaConfig, JSON.stringify({
