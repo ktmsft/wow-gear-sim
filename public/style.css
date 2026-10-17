@@ -30,10 +30,10 @@ code { font-family: ui-monospace, Consolas, monospace; background: var(--panel-2
   margin: 0 auto;
   padding: 28px 16px 8px;
   display: flex;
-  gap: 16px;
-  justify-content: space-between;
-  align-items: flex-end;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  text-align: center;
 }
 .brand h1 { margin: 0; font-size: 26px; letter-spacing: 0.2px; }
 .brand p { margin: 4px 0 0; color: var(--muted); }
@@ -182,7 +182,7 @@ table.results { width: 100%; border-collapse: collapse; font-size: 14px; }
 .cmd code { flex: 1; min-width: 0; padding: 9px 11px; font-size: 12.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 7px; overflow-wrap: anywhere; }
 .count .warn { color: var(--accent); }
 
-.system { flex-basis: 100%; display: flex; gap: 6px; flex-wrap: wrap; }
+.system { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .system .pill { font-size: 12px; color: var(--text); }
 .system .k { color: var(--muted); margin-right: 2px; }
 
@@ -255,18 +255,18 @@ button.action { margin-top: 12px; border-color: color-mix(in srgb, var(--accent)
 button.app-update-x { background: none; border: none; color: var(--muted); font-size: 20px; line-height: 1; padding: 2px 8px; }
 button.app-update-x:hover { color: var(--text); }
 
-/* logo: Cinzel Decorative subset (SIL OFL, see fonts/OFL.txt), renamed per the license */
+/* logo: Cormorant Bold subset (SIL OFL, see fonts/OFL.txt) */
 @font-face {
   font-family: 'SIMulacrum Logo';
   src: url('/fonts/logo.woff2') format('woff2');
-  font-weight: 900;
+  font-weight: 700;
   font-display: block;
 }
-.brand h1.logo { display: flex; align-items: center; gap: 10px; margin: 0 0 2px; font-size: clamp(34px, 7vw, 58px); line-height: 1.15; }
+.brand h1.logo { display: flex; justify-content: center; align-items: center; gap: 12px; margin: 0; font-size: clamp(34px, 7vw, 58px); line-height: 1.15; }
 .logo-text {
   position: relative;
-  font-family: 'SIMulacrum Logo', 'Trajan Pro', Georgia, serif;
-  font-weight: 900;
+  font-family: 'SIMulacrum Logo', Georgia, serif;
+  font-weight: 700;
   letter-spacing: 0.01em;
   /* Base layer: dark outline and drop shadow. */
   color: #1d1104;
@@ -288,3 +288,4 @@ button.app-update-x:hover { color: var(--text); }
 .logo-wing { width: clamp(28px, 5vw, 46px); height: auto; fill: #d9a33a; opacity: 0.85; filter: drop-shadow(0 1px 0 #1d1104); }
 .logo-wing.flip { transform: scaleX(-1); }
 .system .pill { max-width: 100%; }
+.brand .subtitle { margin: 2px 0 6px; font: italic 600 clamp(15px, 2.4vw, 19px) Georgia, 'Times New Roman', serif; color: #d6ad5a; letter-spacing: 0.02em; }
