@@ -10,11 +10,12 @@ SIMulacrum runs entirely on your own computer. It has no accounts, analytics, te
 
 ## When the app uses the internet
 
-This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it, with one exception: the update check below.
+This program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it, with two exceptions: the update check and item icons, both described below.
 
 - **Update check:** when you open the page, the app asks GitHub's public API (`api.github.com`) for the latest SIMulacrum release, to tell you about new versions and sim engine updates. The request contains nothing about you or your character. Like any web request, GitHub can see your IP address. See [GitHub's privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
 - **Engine update:** only when you click **Update now**, the app downloads the new SimulationCraft engine from this project's GitHub releases.
 - **Links:** item names (Wowhead), the addon link (CurseForge) and the footer links open in your browser only when you click them.
+- **Item icons:** the first time an item, gem or enchant icon is shown, the app downloads that image from Wowhead's image server (`wow.zamimg.com`) and saves it in `%LOCALAPPDATA%\SIMulacrum\icons`. The request only names the icon file. After that it's served from your PC.
 - **Full SimulationCraft report:** only if you open it, the report page loads item tooltips from Wowhead and a talent tree image from Raidbots, as SimulationCraft's own reports do.
 
 ## Contact

@@ -5,10 +5,11 @@ import { equippedSockets, buildGemSetups, describeStats } from '/lib/gems.js';
 import {
   SEASON, deriveItems, trackLabel, upgradeTrack, maxAffordableLevel, catalystTarget,
 } from '/lib/upgrades.js';
-import { esc, fmt, pct, duration, wowheadUrl } from './format.js';
+import { esc, fmt, signed, pct, duration, wowheadUrl } from './format.js';
 import {
   detailHtml, weightsHtml, crestsHtml, vaultHtml, trinketsHtml, stylesHtml, historyHtml,
 } from './analysis.js';
+import { loadoutHtml } from './loadout.js';
 
 const STORAGE_KEY = 'gear-sim:profile';
 const SETTINGS_KEY = 'gear-sim:settings';
@@ -34,8 +35,21 @@ const els = {
   tabs: $('tabs'), estimateNote: $('estimate-note'),
   moreCard: $('more-card'), toolError: $('tool-error'),
   analysisCard: $('analysis-card'), analysisTitle: $('analysis-title'), analysisMeta: $('analysis-meta'),
-  analysisTabs: $('analysis-tabs'), analysis: $('analysis'),
+  analysis: $('analysis'),
   historyCard: $('history-card'), history: $('history'),
+  setupView: $('setup-view'), resultsView: $('results-view'), navTabs: $('nav-tabs'), rerun: $('nav-rerun'),
+  runError: $('run-error'), emptyCard: $('empty-card'),
+};
+
+// Shown on the results page before a sim has been run.
+const VIEW_INFO = {
+  topgear: ['Top DPS', 'Pick what to try on the setup page, then run Top DPS.'],
+  weights: ['Stat weights', 'How much DPS each stat is worth to you, plus a Pawn string for in-game upgrade arrows.'],
+  crests: ['Crest planner', 'Every upgrade you could buy, ranked by DPS gained per Mistcrest.'],
+  vault: ['Great Vault', 'Sims each reward in your vault and tells you which one to take. Open the vault in game before you type /simc.'],
+  trinkets: ['Trinket chart', 'Your trinkets (equipped, bags and vault) at every upgrade rank.'],
+  styles: ['Fight styles', 'Your best Top DPS sets simmed in single target, cleave, AoE and Dungeon Slice. Run Top DPS first.'],
+  history: ['DPS history', 'Every main sim for this character is saved on this PC. Run one to start the chart.'],
 };
 
 const ANALYSIS_TITLES = {
@@ -62,7 +76,14 @@ let openRow = null;
 const details = new Map();
 const detailJobs = new Set();
 const analyses = {};
-let analysisTab = null;
+let view = 'topgear';
+let historyRuns = [];
+let runningMode = null;
+// Sims ticked in "What to sim", run in this order; fight styles builds on Top DPS.
+const SIM_ORDER = ['topgear', 'weights', 'crests', 'vault', 'trinkets', 'styles'];
+let simPick = new Set(['topgear']);
+let batch = [];
+let batchSize = 0;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -345,8 +366,37 @@ function updateCount() {
       + (parts.length > 1 ? ` (${parts.join(', ')})` : '')
       + (total >= LARGE_RUN ? ' · <span class="warn">large run, this can take a long time</span>' : '');
   }
-  els.run.disabled = over || total === 0 || !!currentJob;
+  const picks = pickedSims();
+  els.run.textContent = picks.length > 1 ? `Run ${picks.length} sims` : 'Run sim';
+  els.run.disabled = !!currentJob || !picks.length || (simPick.has('topgear') && (over || total === 0));
+  if (!simPick.has('topgear')) {
+    els.count.className = 'count';
+    els.count.innerHTML = picks.length ? `${picks.map((m) => VIEW_INFO[m][0]).join(', ')}` : 'Tick at least one sim under What to sim.';
+  }
   updateTools();
+  updateFloat();
+}
+
+// Always-visible copy of the Run button on the setup page.
+function updateFloat() {
+  const f = $('run-float');
+  f.hidden = !parsed?.className || !els.resultsView.hidden;
+  if (f.hidden) return;
+  f.querySelector('.rf-label').textContent = currentJob ? 'View progress' : els.run.textContent;
+  f.disabled = !currentJob && els.run.disabled;
+  const sets = simPick.has('topgear') && setTotal ? `${setTotal.toLocaleString()} set${setTotal === 1 ? '' : 's'}` : '';
+  $('run-float-sub').textContent = currentJob ? 'A sim is running' : sets;
+}
+
+// Ticked sims that can run right now, in run order.
+function pickedSims() {
+  return SIM_ORDER.filter((m) => simPick.has(m) && simAvailable(m));
+}
+
+function simAvailable(mode) {
+  if (mode === 'vault') return !!parsed?.vault?.length;
+  if (mode === 'styles') return simPick.has('topgear') || !!lastJobId;
+  return true;
 }
 
 function updateTools() {
@@ -354,11 +404,18 @@ function updateTools() {
   $('vault-note').textContent = vault
     ? `${vault} reward${vault === 1 ? '' : 's'} in your export.`
     : 'No rewards in this export. Open the Great Vault in game, then type /simc again.';
-  $('styles-note').textContent = lastJobId ? 'Uses your top sets from the last main sim.' : 'Run the main sim first.';
-  for (const b of document.querySelectorAll('.tool-run')) {
-    b.disabled = !!currentJob || (b.dataset.mode === 'styles' && !lastJobId) || (b.dataset.mode === 'vault' && !vault);
+  $('styles-note').textContent = simPick.has('topgear') ? 'Runs after Top DPS, using its best sets.'
+    : lastJobId ? 'Uses your best sets from the last Top DPS run.' : 'Needs Top DPS: tick it too.';
+  for (const box of els.moreCard.querySelectorAll('[data-sim]')) {
+    const ok = simAvailable(box.dataset.sim);
+    box.checked = simPick.has(box.dataset.sim) && ok;
+    box.disabled = !ok;
+    box.closest('.tool').classList.toggle('unavailable', !ok);
   }
+  const n = pickedSims().length;
+  $('sim-count').textContent = n ? `${n} selected` : '';
   $('styles-btn').disabled = !!currentJob || !lastJobId;
+  if (!els.resultsView.hidden) renderView();
 }
 
 function saveSettings() {
@@ -368,6 +425,7 @@ function saveSettings() {
     compare: Object.fromEntries(Object.entries(consumableCompare).map(([k, v]) => [k, [...v]])),
     fightStyle: $('fightStyle').value, targets: $('targets').value, duration: $('duration').value,
     targetError: $('targetError').value, smart: $('smart').checked,
+    sims: [...simPick],
   })));
 }
 
@@ -383,6 +441,7 @@ function loadSettings() {
     consumableCompare = Object.fromEntries(Object.entries(s.compare ?? {}).map(([k, v]) => [k, new Set(v)]));
     for (const id of ['fightStyle', 'targets', 'duration', 'targetError']) if (s[id] != null) $(id).value = s[id];
     $('smart').checked = s.smart !== false;
+    if (Array.isArray(s.sims)) simPick = new Set(s.sims.filter((m) => SIM_ORDER.includes(m)));
   } catch { /* ignore bad saved settings */ }
 }
 
@@ -394,7 +453,7 @@ function showGuide(show) {
 function loadProfile(text) {
   els.formError.hidden = true;
   showGuide(!text.trim());
-  const cards = [els.gearCard, els.gemCard, els.consumableCard, els.talentCard, els.optionsCard, els.moreCard, els.historyCard];
+  const cards = [els.gearCard, els.gemCard, els.consumableCard, els.talentCard, els.optionsCard, els.moreCard];
   if (!text.trim()) {
     parsed = null;
     els.character.hidden = true;
@@ -466,13 +525,90 @@ function showProgress(job) {
     : job.mode === 'weights' ? 'Working out stat weights (one sim per stat)…'
     : known ? `${prefix}set ${done} of ${total}…`
     : phase === 'baseline' ? `${prefix}simulating your current setup…` : `${prefix}starting SimulationCraft…`;
-  els.progressLine.textContent = job.lastLine ?? '';
+  els.progressLine.textContent = progressDetail(job);
+  const title = VIEW_INFO[job.mode ?? 'topgear']?.[0] ?? 'Simulating';
+  const step = batchSize > 1 ? ` (${batchSize - batch.length} of ${batchSize})` : '';
+  $('progress-title').textContent = `Simulating: ${title}${step}`;
 }
 
-function showError(mode, message) {
-  const el = mode === 'topgear' ? els.formError : els.toolError;
+// Plain-English note on what the engine is doing right now.
+function progressDetail(job) {
+  const { phase, stage = 1, stages = 1, total = 0, error } = job.progress ?? {};
+  const secs = job.startedAt ? Math.round((Date.now() - job.startedAt) / 1000) : 0;
+  const elapsed = secs ? ` Running for ${secs < 60 ? `${secs} sec` : `${Math.floor(secs / 60)} min ${secs % 60} sec`}.` : '';
+  const sets = `${total.toLocaleString()} set${total === 1 ? '' : 's'}`;
+  if (job.state === 'queued') return 'Another sim is running. This one starts as soon as it finishes.';
+  let note;
+  if (job.mode === 'weights') {
+    note = 'Sims your character once as is, then once per stat with a little extra of that stat, to see how much each one adds.';
+  } else if (job.mode === 'styles') {
+    note = `${job.progress?.note ?? ''}: simming your current gear and ${sets} in this kind of fight.`;
+  } else if (phase === 'baseline' || phase === 'starting') {
+    note = 'First it sims your current gear, so every set has something to compare against.';
+  } else if (stages > 1 && stage === 1) {
+    note = `A rough ±${error ?? 1}% sim of every set to find the contenders. The best ones get a precise re-sim next.`;
+  } else if (stages > 1) {
+    note = `Re-simming the ${sets} closest to the top at ±${error}%, so the ranking can be trusted.`;
+  } else {
+    note = `Simming ${sets} at ±${error}% against your current gear.`;
+  }
+  return note + elapsed;
+}
+
+function showError(mode, message, onResults = false) {
+  const el = onResults ? els.runError : mode === 'topgear' ? els.formError : els.toolError;
   el.textContent = message;
   el.hidden = false;
+}
+
+// --- pages ------------------------------------------------------------------------
+
+function go(page, mode = view) {
+  const hash = page === 'results' ? `#results/${mode}` : '#setup';
+  if (location.hash !== hash) location.hash = hash;
+  else route();
+}
+
+function route() {
+  const [page, mode] = location.hash.slice(1).split('/');
+  const results = page === 'results' && parsed?.className;
+  if (results && VIEW_INFO[mode]) view = mode;
+  els.setupView.hidden = !!results;
+  els.resultsView.hidden = !results;
+  if (results) renderView();
+  updateFloat();
+  window.scrollTo({ top: 0 });
+}
+
+function renderView() {
+  for (const b of els.navTabs.querySelectorAll('[data-view]')) {
+    const v = b.dataset.view;
+    b.setAttribute('aria-selected', String(v === view));
+    const done = v === 'topgear' ? !!lastResult : v === 'history' ? historyRuns.length > 0 : !!analyses[v];
+    b.classList.toggle('has-result', done);
+  }
+  const running = !!currentJob;
+  els.progressCard.hidden = !running;
+  const has = view === 'topgear' ? !!lastResult : view === 'history' ? historyRuns.length > 0 : !!analyses[view];
+  const busyHere = running && runningMode === view;
+  els.resultsCard.hidden = view !== 'topgear' || !has || busyHere;
+  els.analysisCard.hidden = !VIEW_INFO[view] || view === 'topgear' || view === 'history' || !has || busyHere;
+  els.historyCard.hidden = view !== 'history' || !has;
+  if (!els.analysisCard.hidden) renderAnalysis(view);
+
+  els.emptyCard.hidden = has || busyHere;
+  if (!has) {
+    const [title, text] = VIEW_INFO[view];
+    $('empty-title').textContent = title;
+    $('empty-text').textContent = text;
+    const run = $('empty-run');
+    run.hidden = view === 'history';
+    run.textContent = view === 'topgear' ? 'Go to setup' : `Run ${title.toLowerCase()}`;
+    run.disabled = running || (view === 'styles' && !lastJobId) || (view === 'vault' && !parsed?.vault?.length);
+  }
+  els.rerun.hidden = view === 'history' || !has;
+  els.rerun.disabled = running || (view === 'styles' && !lastJobId);
+  els.rerun.textContent = view === 'topgear' ? 'Re-run Top DPS' : `Re-run ${VIEW_INFO[view][0].toLowerCase()}`;
 }
 
 // Up to 10 sets for the fight-style comparison: each kind's best, then the top overall.
@@ -485,12 +621,12 @@ function styleCandidates() {
   return picks;
 }
 
-async function runMode(mode) {
+async function runMode(mode, { navigate = true } = {}) {
   els.formError.hidden = true;
   els.toolError.hidden = true;
   let body;
   if (mode === 'topgear') {
-    if (setTotal >= LARGE_RUN && !confirm(`${setTotal.toLocaleString()} sets can take a long time, possibly hours. You can cancel at any point. Run it?`)) return;
+    if (navigate && setTotal >= LARGE_RUN && !confirm(`${setTotal.toLocaleString()} sets can take a long time, possibly hours. You can cancel at any point. Run it?`)) return false;
     const loadoutIdx = [...els.loadouts.querySelectorAll('input:checked')].map((i) => Number(i.dataset.loadout));
     body = {
       mode,
@@ -511,14 +647,31 @@ async function runMode(mode) {
       body: JSON.stringify(body),
     });
     currentJob = job.id;
-    if (mode === 'topgear') els.resultsCard.hidden = true;
-    els.progressCard.hidden = false;
-    els.progressCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    runningMode = mode;
+    els.runError.hidden = true;
+    showProgress(job);
     updateCount();
+    if (navigate) go('results', mode);
+    else if (!els.resultsView.hidden) renderView();
     poll();
+    return true;
   } catch (err) {
-    showError(mode, err.message);
+    showError(mode, err.message, !els.resultsView.hidden);
+    return false;
   }
+}
+
+// Runs every ticked sim in turn. The first one's tab opens; the rest fill in their tabs.
+async function runBatch(modes) {
+  batch = [...modes];
+  batchSize = modes.length;
+  await nextInBatch(true);
+}
+
+async function nextInBatch(first = false) {
+  const mode = batch.shift();
+  if (!mode) return;
+  if (!(await runMode(mode, { navigate: first }))) batch = [];
 }
 
 async function poll() {
@@ -538,6 +691,7 @@ async function poll() {
 
 function finish(job) {
   currentJob = null;
+  runningMode = null;
   els.progressCard.hidden = true;
   const mode = job.mode ?? 'topgear';
   if (job.state === 'done' && mode === 'topgear') {
@@ -550,13 +704,15 @@ function finish(job) {
     loadHistory();
   } else if (job.state === 'done') {
     analyses[mode] = { result: job.result, rows: lastResult ? new Map(lastResult.rows.map((r) => [r.name, r])) : new Map() };
-    analysisTab = mode;
-    renderAnalysis(true);
   } else if (job.state === 'error') {
-    showError(mode, job.error);
+    showError(mode, job.error, true);
   }
+  if (job.state === 'done' && batch.length === batchSize - 1) view = mode;
+  if (job.state !== 'done') batch = [];
   updateCount();
   refreshStatus();
+  if (!els.resultsView.hidden) go('results', view);
+  if (batch.length) nextInBatch();
 }
 
 // --- results ----------------------------------------------------------------------
@@ -623,6 +779,14 @@ function profileWith(winners) {
   return lines.join('\n');
 }
 
+// SimulationCraft's "Implementation Not Yet Verified" warnings, in plain words.
+function unverifiedNote(result) {
+  const names = result.unverified ?? [];
+  if (!names.length) return '';
+  const list = names.map((n) => `<b>${esc(n)}</b>`).join(', ');
+  return `<p class="hero-note">${list} ${names.length === 1 ? 'is' : 'are'} only approximated by SimulationCraft so far, so ${names.length === 1 ? 'its' : 'their'} DPS is a best guess. Engine updates usually fix this within a few weeks.</p>`;
+}
+
 function renderBest(result) {
   const best = bestByKind(result);
   const winners = Object.values(best);
@@ -633,49 +797,37 @@ function renderBest(result) {
       <span><b>${duration(result.seconds ?? 0)}</b></span>
       ${result.smart ? '<span><b>Smart</b> sim</span>' : ''}
       <span>±<b>${fmt(result.baseline.error ?? 0)}</b> margin</span>
-    </div>`;
-  if (!winners.length) {
-    els.best.className = 'hero keep';
-    els.best.innerHTML = `
-      <div class="hero-main">
-        <p class="hero-eyebrow">Verdict</p>
-        <h3 class="hero-title">Your equipped gear is the top gear</h3>
-        <p class="hero-sub">Nothing you ticked beats it by more than the sim's margin of error.</p>
-      </div>
-      <div class="hero-num">
-        <span class="hero-dps">${fmt(base)}</span>
-        <span class="hero-unit">DPS</span>
-      </div>
-      ${stats}`;
-    return;
-  }
+    </div>
+    ${unverifiedNote(result)}`;
   const total = winners.reduce((n, r) => n + r.delta, 0);
   const approx = winners.length > 1 ? '≈ ' : '';
-  const keyName = (key) => key.startsWith('consumable:') ? CONSUMABLES[key.split(':')[1]].label : KIND_LABELS[key];
-  els.best.className = 'hero win';
+  els.best.className = `best ${winners.length ? 'win' : 'keep'}`;
   els.best.innerHTML = `
-    <div class="hero-main">
-      <p class="hero-eyebrow">${winners.length === 1 ? 'Upgrade found' : `${winners.length} upgrades found`}</p>
-      <h3 class="hero-title">${fmt(base)} <span class="arrow">→</span> ${approx}${fmt(base + total)} DPS</h3>
-      ${winners.length > 1 ? '<p class="hero-sub">Each change was simmed on its own, so the combined gain is approximate.</p>' : ''}
+    <div class="hero ${winners.length ? 'win' : 'keep'}">
+      <div class="hero-main">
+        <p class="hero-eyebrow">${winners.length ? 'Your best setup' : 'Verdict'}</p>
+        <h3 class="hero-title">${winners.length
+          ? `${fmt(base)} <span class="arrow">→</span> ${approx}${fmt(base + total)} DPS`
+          : "You're already wearing your best setup"}</h3>
+        <p class="hero-sub">${winners.length
+          ? `Follow the steps below.${winners.length > 1 ? ' Each change was simmed on its own, so the combined gain is approximate.' : ''}`
+          : "Nothing you ticked beats it by more than the sim's margin of error. Keep everything as it is."}</p>
+      </div>
+      <div class="hero-num">
+        <span class="hero-dps">${winners.length ? signed(total) : fmt(base)}</span>
+        ${winners.length ? `<span class="gain-pill">${pct(total, base)}</span>` : '<span class="hero-unit">DPS</span>'}
+      </div>
+      ${stats}
     </div>
-    <div class="hero-num">
-      <span class="hero-dps">+${fmt(total)}</span>
-      <span class="gain-pill">${pct(total, base)}</span>
-    </div>
-    ${stats}
-    <div class="picks">
-      ${Object.entries(best).map(([key, row]) => `
-        <div class="pick">
-          <div class="pick-head"><span>${esc(keyName(key))}</span><span class="pick-gain">+${fmt(row.delta)}</span></div>
-          <div class="pick-body">${changeChips(row, true)}</div>
-        </div>`).join('')}
-    </div>
-    <button type="button" id="copy-best" class="action">Copy SimC profile with these changes</button>`;
-  $('copy-best').onclick = async (e) => {
-    await navigator.clipboard.writeText(profileWith(winners));
-    e.target.textContent = 'Copied';
-  };
+    ${loadoutHtml(parsed, winners, SLOT_LABELS)}
+    ${winners.length ? '<button type="button" id="copy-best" class="action">Copy SimC profile with these changes</button>' : ''}`;
+  const copy = $('copy-best');
+  if (copy) {
+    copy.onclick = async (e) => {
+      await navigator.clipboard.writeText(profileWith(winners));
+      e.target.textContent = 'Copied';
+    };
+  }
 }
 
 function renderTabs(result) {
@@ -792,16 +944,10 @@ async function requestDetail(name) {
 
 // --- extra sims -----------------------------------------------------------------
 
-function renderAnalysis(scroll = false) {
-  const modes = Object.keys(ANALYSIS_TITLES).filter((m) => analyses[m]);
-  if (!modes.length) return;
-  if (!analyses[analysisTab]) analysisTab = modes[0];
-  const { result, rows } = analyses[analysisTab];
-  els.analysisTitle.textContent = ANALYSIS_TITLES[analysisTab];
+function renderAnalysis(mode) {
+  const { result, rows } = analyses[mode];
+  els.analysisTitle.textContent = ANALYSIS_TITLES[mode];
   els.analysisMeta.textContent = `${duration(result.seconds ?? 0)}${result.simc ? ` · SimulationCraft ${result.simc}` : ''}`;
-  els.analysisTabs.hidden = modes.length < 2;
-  els.analysisTabs.innerHTML = modes.map((m) => `
-    <button type="button" role="tab" data-analysis="${m}" aria-selected="${m === analysisTab}">${ANALYSIS_TITLES[m]}</button>`).join('');
   const describe = (name) => {
     const row = rows.get(name);
     return row ? `<div class="rank-chgs">${changeChips(row)}</div>` : esc(name);
@@ -812,9 +958,7 @@ function renderAnalysis(scroll = false) {
     vault: () => vaultHtml(result, parsed?.equipped ?? {}, SLOT_LABELS),
     trinkets: () => trinketsHtml(result),
     styles: () => stylesHtml(result, describe),
-  }[analysisTab]();
-  els.analysisCard.hidden = false;
-  if (scroll) els.analysisCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }[mode]();
 }
 
 // --- history --------------------------------------------------------------------
@@ -828,11 +972,12 @@ async function loadHistory(clear = false) {
   if (!parsed?.className) return;
   try {
     const { runs } = await api(`/api/history?${characterKey()}`, clear ? { method: 'DELETE' } : undefined);
-    els.historyCard.hidden = !runs.length;
+    historyRuns = runs;
     if (runs.length) els.history.innerHTML = historyHtml(runs);
   } catch {
-    els.historyCard.hidden = true;
+    historyRuns = [];
   }
+  if (!els.resultsView.hidden) renderView();
 }
 
 function renderResults() {
@@ -841,10 +986,6 @@ function renderResults() {
   renderBest(result);
   renderTabs(result);
   renderTable(result);
-  if (els.resultsCard.hidden) {
-    els.resultsCard.hidden = false;
-    els.resultsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
 }
 
 // --- wiring -----------------------------------------------------------------------
@@ -925,13 +1066,37 @@ for (const id of ['fightStyle', 'targets', 'duration', 'targetError', 'smart']) 
   $(id).addEventListener('change', () => { saveSettings(); updateCount(); });
 }
 
-els.run.addEventListener('click', () => runMode('topgear'));
+els.run.addEventListener('click', () => runBatch(pickedSims()));
+$('run-float').addEventListener('click', () => (currentJob ? go('results', runningMode ?? view) : els.run.click()));
 
-$('styles-btn').addEventListener('click', () => runMode('styles'));
+$('styles-btn').addEventListener('click', () => runBatch(['styles']));
 
-els.moreCard.addEventListener('click', (e) => {
-  const mode = e.target.closest('.tool-run')?.dataset.mode;
-  if (mode) runMode(mode);
+$('nav-back').addEventListener('click', () => go('setup'));
+els.rerun.addEventListener('click', () => runBatch([view]));
+$('empty-run').addEventListener('click', () => (view === 'topgear' ? go('setup') : runBatch([view])));
+els.navTabs.addEventListener('click', (e) => {
+  const v = e.target.closest('[data-view]')?.dataset.view;
+  if (v) go('results', v);
+});
+window.addEventListener('hashchange', route);
+
+// Icons Wowhead doesn't have yet become a labelled placeholder.
+document.addEventListener('error', (e) => {
+  const img = e.target;
+  if (img.tagName !== 'IMG' || !img.classList.contains('ic')) return;
+  const span = document.createElement('span');
+  span.className = `${img.className} broken`;
+  span.textContent = img.dataset.fb ?? '';
+  img.replaceWith(span);
+}, true);
+
+
+els.moreCard.addEventListener('change', (e) => {
+  const mode = e.target.dataset.sim;
+  if (!mode) return;
+  if (e.target.checked) simPick.add(mode); else simPick.delete(mode);
+  saveSettings();
+  updateCount();
 });
 
 els.results.addEventListener('click', (e) => {
@@ -953,12 +1118,6 @@ els.results.addEventListener('keydown', (e) => {
 });
 
 els.analysisCard.addEventListener('click', async (e) => {
-  const tab = e.target.closest('[data-analysis]')?.dataset.analysis;
-  if (tab) {
-    analysisTab = tab;
-    renderAnalysis();
-    return;
-  }
   const copy = e.target.closest('[data-copy]');
   if (copy) {
     await navigator.clipboard.writeText($(copy.dataset.copy).textContent);
@@ -1114,3 +1273,5 @@ if (saved) {
   els.profile.value = saved;
   loadProfile(saved);
 }
+if (location.hash.startsWith('#results')) history.replaceState(null, '', '#setup');
+route();

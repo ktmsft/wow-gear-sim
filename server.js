@@ -122,9 +122,13 @@ function parseProgress(job, chunk) {
   if (!lines.length) return;
   job.lastLine = lines[lines.length - 1].slice(0, 200);
   for (const line of lines) {
-    const sets = line.match(/Profilesets?\s*\(?\s*(\d+)\s*\/\s*(\d+)/i);
+    // e.g. "Generating Profileset: g77 106/470 [====>] ..."
+    const sets = line.match(/Profileset:?\s+\S+\s+(\d+)\s*\/\s*(\d+)/i) ?? line.match(/Profilesets?\s*\(\s*(\d+)\s*\/\s*(\d+)/i);
     if (sets) job.progress = { ...job.progress, phase: 'profilesets', done: Number(sets[1]), total: Number(sets[2]) };
     else if (/baseline/i.test(line)) job.progress = { ...job.progress, phase: 'baseline' };
+    // Effects SimulationCraft only approximates; reported once with the results.
+    const guess = line.match(/Implementation Not Yet Verified:\s*([^:]+):/);
+    if (guess) (job.unverified ??= new Set()).add(guess[1].trim());
   }
 }
 
@@ -159,7 +163,7 @@ async function runSimc(job, {
   await fsp.writeFile(inputPath, buildSimcInput(job.parsed, variants, options, {
     jsonPath, threads: THREADS, targetError, htmlPath, actorLines, scale,
   }));
-  job.progress = { ...job.progress, stage, phase: 'starting', done: 0, total: variants.length };
+  job.progress = { ...job.progress, stage, phase: 'starting', done: 0, total: variants.length, error: targetError };
 
   const code = await new Promise((resolve, reject) => {
     const child = spawn(SIMC, [inputPath], { cwd: dir, windowsHide: true });
@@ -319,7 +323,7 @@ const MODES = {
     const out = [];
     const { variants } = job;
     for (const [i, scenario] of FIGHT_SCENARIOS.entries()) {
-      job.progress = { stages: FIGHT_SCENARIOS.length, label: scenario.label };
+      job.progress = { stages: FIGHT_SCENARIOS.length, label: scenario.label, note: `${scenario.label} (${scenario.note})` };
       const options = { ...job.options, fightStyle: scenario.fightStyle, targets: scenario.targets };
       const run = await runSimc(job, { variants, options, stage: i + 1 });
       if (!run) return null;
@@ -361,7 +365,11 @@ async function runJob(job) {
   try {
     const result = await MODES[job.mode](job);
     if (!result) return;
-    job.result = { ...result, seconds: Math.round((Date.now() - job.startedAt) / 1000) };
+    job.result = {
+      ...result,
+      unverified: [...(job.unverified ?? [])],
+      seconds: Math.round((Date.now() - job.startedAt) / 1000),
+    };
     job.state = 'done';
   } catch (err) {
     if (job.state !== 'cancelled') {
@@ -508,6 +516,33 @@ async function handleSim(req, res) {
   send(res, 202, publicJob(job));
 }
 
+// Item icons: fetched from Wowhead's image server the first time, then served from disk.
+const ICON_DIR = path.join(history.DIR, 'icons');
+const iconFetches = new Map();
+const iconMisses = new Set();
+
+async function handleIcon(res, name) {
+  const file = path.join(ICON_DIR, `${name}.jpg`);
+  let data = await fsp.readFile(file).catch(() => null);
+  if (!data && !iconMisses.has(name)) {
+    if (!iconFetches.has(name)) {
+      iconFetches.set(name, (async () => {
+        const r = await fetch(`https://wow.zamimg.com/images/wow/icons/large/${name}.jpg`, { signal: AbortSignal.timeout(8000) });
+        if (!r.ok) throw new Error(String(r.status));
+        const buf = Buffer.from(await r.arrayBuffer());
+        await fsp.mkdir(ICON_DIR, { recursive: true });
+        await fsp.writeFile(file, buf);
+        return buf;
+      })().finally(() => iconFetches.delete(name)));
+    }
+    data = await iconFetches.get(name).catch(() => null);
+    if (!data) iconMisses.add(name);
+  }
+  if (!data) return send(res, 404, { error: 'Icon unavailable' });
+  res.writeHead(200, { 'content-type': 'image/jpeg', 'cache-control': 'max-age=604800' });
+  res.end(data);
+}
+
 async function handleHistory(req, res, url) {
   const name = url.searchParams.get('name') ?? '';
   const server = url.searchParams.get('server') ?? '';
@@ -584,6 +619,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && url.pathname === '/api/sim') return await handleSim(req, res);
     if (url.pathname === '/api/update') return await handleUpdate(req, res, url);
     if (url.pathname === '/api/history') return await handleHistory(req, res, url);
+    const icon = url.pathname.match(/^\/api\/icons\/([a-z0-9_-]{1,100})\.jpg$/);
+    if (icon && req.method === 'GET') return await handleIcon(res, icon[1]);
 
     const report = url.pathname.match(/^\/api\/reports\/([0-9a-f-]{36})$/);
     if (report && req.method === 'GET') {

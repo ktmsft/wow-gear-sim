@@ -4,7 +4,7 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-const DIR = process.env.LOCALAPPDATA
+export const DIR = process.env.LOCALAPPDATA
   ? path.join(process.env.LOCALAPPDATA, 'SIMulacrum')
   : path.join(os.homedir(), '.simulacrum');
 const FILE = path.join(DIR, 'history.json');

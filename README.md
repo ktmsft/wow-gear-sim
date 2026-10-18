@@ -28,7 +28,7 @@ It works for any class and spec. Everything comes from your export, and runs ent
 
 ## Screenshots
 
-**Results:** every set ranked against what you have on now, with the margin of error. The top card sums up the changes worth making.
+**Results:** your best setup as step-by-step instructions and a character sheet, with the slots to change highlighted. Every set is ranked below it.
 
 ![Ranked sim results](docs/screenshots/results.png)
 
@@ -105,6 +105,8 @@ The gem and consumable lists are in `lib/catalog.js`, for Midnight (patch 12.1).
 
 Upgrade tracks, crest costs and catalyst items are in `lib/season.js`. When a new season starts, regenerate it with `node scripts/update-season-data.mjs`, which reads Raidbots' public game data.
 
+Item icons, gem icons and enchant names are in `lib/icons.js`. Regenerate it with `node scripts/update-icons.mjs` at the same time.
+
 ## Releases
 
 The [Release workflow](.github/workflows/release.yml) builds SimulationCraft and `SIMulacrum.exe` on GitHub every Wednesday, publishing only when something changed. It can also be run by hand from the Actions tab. To package locally, run `npm install`, then `npm run package -- --simc simc\simc.exe`.
@@ -144,6 +146,14 @@ Only `SIMulacrum.exe`, built from this repository by the [Release workflow](.git
 ## Privacy
 
 SIMulacrum doesn't collect any data. It only goes online to check GitHub for updates, and to download a new sim engine when you ask it to. See the [privacy policy](PRIVACY.md).
+
+## Credits
+
+- [SimulationCraft](https://github.com/simulationcraft/simc) does all the simming.
+- Upgrade tracks, catalyst items, item icon names and enchant names come from [Raidbots](https://www.raidbots.com)' public game data.
+- Item icon images come from [Wowhead](https://www.wowhead.com).
+
+SIMulacrum isn't affiliated with Raidbots, Wowhead or Blizzard Entertainment.
 
 ## License
 
