@@ -158,7 +158,7 @@ export function vaultHtml(r, equipped, slotLabels) {
             ${x === winner ? '<span class="vault-badge">Best pick</span>' : `<span class="vault-rank">#${i + 1}</span>`}
             <span class="chg-slot">${esc(slotLabels[x.slot] ?? x.slot)}</span>
             ${itemLink(x, x.itemName)}
-            <span class="ilvl-pill">${x.ilvl}</span>
+            ${x.ilvl ? `<span class="ilvl-pill">${x.ilvl}</span>` : ''}
             ${old ? `<span class="vault-old">Replaces ${esc(old.name)} (${old.ilvl})</span>` : ''}
             <span class="vault-delta">${signed(x.delta)} <small>${pct(x.delta, r.baseline.dps)}</small></span>
           </div>`;

@@ -250,6 +250,7 @@ button.link:hover { text-decoration: underline; }
 .charges button { width: 38px; height: 38px; font-size: 15px; }
 .charges button[aria-checked="true"] { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel-2)); }
 button.action { margin-top: 12px; border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--accent); }
+.tag.vault { color: var(--epic); border-color: color-mix(in srgb, var(--epic) 45%, transparent); }
 .tag.mod { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
 .item .remove { border: none; background: none; color: var(--muted); padding: 0 4px; font-size: 16px; line-height: 1; }
 .item .remove:hover { color: var(--bad); }

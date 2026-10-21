@@ -5,6 +5,7 @@ import { parseProfile } from '../lib/parse.js';
 import { buildCombos, countCombos } from '../lib/combos.js';
 import { buildSimcInput, buildVariants, normalizeOptions, safeCharLines } from '../lib/simc-input.js';
 import { buildGemSetups, equippedSockets } from '../lib/gems.js';
+import { fillItemInfo } from '../lib/item-info.js';
 
 const PROFILE = `
 druid="Example"
@@ -134,4 +135,36 @@ test('drops file and network options from pasted profiles', () => {
     safeCharLines(['druid="Example"', 'output=C:/x.txt', 'html=a.html', 'json2=b', 'save=c', 'armory=us,a,b', 'level=90']),
     ['druid="Example"', 'level=90'],
   );
+});
+
+const VAULT_PROFILE = `${PROFILE}
+### Weekly Reward Choices
+#
+# feet=,id=268261,bonus_id=12849
+#
+# trinket1=,id=159617,bonus_id=12849
+#
+# Vault Trinket (318)
+# trinket1=,id=13,bonus_id=12849
+#
+### End of Weekly Reward Choices
+`;
+
+test('vault items without a name line get their name and item level filled in', () => {
+  const parsed = fillItemInfo(parseProfile(VAULT_PROFILE));
+  assert.deepEqual(parsed.vault.map((v) => [v.name, v.ilvl]), [
+    ['Bespittled Slitherslippers', 318], ['Lustrous Golden Plumage', 318], ['Vault Trinket', 318],
+  ]);
+});
+
+test('a gear set uses at most one vault item', () => {
+  const parsed = fillItemInfo(parseProfile(VAULT_PROFILE));
+  const keys = parsed.vault.map((v) => v.key);
+  const combos = buildCombos(parsed, keys);
+  for (const { changes } of combos) {
+    assert.ok(changes.filter(([, it]) => it.key.startsWith('vault:')).length <= 1);
+  }
+  // Boots, either vault trinket alone in each trinket pairing: 1 + 2 * 2.
+  assert.equal(combos.length, 5);
+  assert.equal(countCombos(parsed, keys), 5);
 });

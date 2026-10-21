@@ -92,7 +92,7 @@ function steps(parsed, winners, slots, labels) {
     if (cat) actions.push(`catalyze your <b>${esc(base)}</b> into <b>${esc(c.name)}</b> (1 charge)`);
     if (up) actions.push(`${cat ? 'upgrade it' : `upgrade your <b>${esc(base)}</b>`} to <b>${esc(up)}</b> <span class="ilvl-pill">${c.ilvl}</span>${crests ? ` (${crests} crests)` : ' (free)'}`);
     const sameSlot = !c.bag && s.was?.name === base;
-    if (!sameSlot) actions.push(`${actions.length ? 'then equip it' : `equip <b>${esc(c.name)}</b> <span class="ilvl-pill">${c.ilvl}</span>`} in <b>${esc(where)}</b>${c.bag && !actions.length ? ' from your bags' : ''}`);
+    if (!sameSlot) actions.push(`${actions.length ? 'then equip it' : `equip <b>${esc(c.name)}</b> <span class="ilvl-pill">${c.ilvl}</span>`} in <b>${esc(where)}</b>${c.bag && !actions.length ? (c.vault ? ' from the Great Vault' : ' from your bags') : ''}`);
     const text = actions.join(', ');
     out.push({
       icon: icon(ic, '', c.name, SHORT[c.slot]),

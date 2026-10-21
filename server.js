@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { isSea } from 'node:sea';
 
 import { parseProfile } from './lib/parse.js';
+import { fillItemInfo } from './lib/item-info.js';
 import { buildCombos } from './lib/combos.js';
 import { deriveItems } from './lib/upgrades.js';
 import { buildSimcInput, buildVariants, normalizeOptions } from './lib/simc-input.js';
@@ -460,7 +461,7 @@ function prepareJob(body) {
   }
 
   if (typeof body.profile !== 'string' || !body.profile.trim()) throw new Error('Paste your SimC addon export first.');
-  const parsed = parseProfile(body.profile);
+  const parsed = fillItemInfo(parseProfile(body.profile));
   if (!parsed.className) throw new Error('Could not find a character in that text.');
   const options = normalizeOptions(body.options);
 

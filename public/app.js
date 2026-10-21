@@ -10,6 +10,7 @@ import {
   detailHtml, weightsHtml, crestsHtml, vaultHtml, trinketsHtml, stylesHtml, historyHtml,
 } from './analysis.js';
 import { loadoutHtml } from './loadout.js';
+import { fillItemInfo, fromVault } from '/lib/item-info.js';
 
 const STORAGE_KEY = 'gear-sim:profile';
 const SETTINGS_KEY = 'gear-sim:settings';
@@ -112,6 +113,7 @@ function renderCharacter() {
   const pills = [
     parsed.name, parsed.spec && `${parsed.spec} ${parsed.className}`,
     `${Object.keys(parsed.equipped).length} equipped`, `${parsed.bags.length} in bags`,
+    parsed.vault.length && `${parsed.vault.length} in vault`,
   ].filter(Boolean);
   els.character.innerHTML = pills.map((p) => `<span class="pill">${esc(p)}</span>`).join('');
   els.character.hidden = false;
@@ -125,9 +127,9 @@ function itemRow(item) {
     ? '<input type="checkbox" checked disabled>'
     : `<input type="checkbox" data-key="${item.key}" ${selected.has(item.key) ? 'checked' : ''}>`;
   const track = trackLabel(item);
-  const tags = item.mods
+  const tags = (fromVault(item) ? '<span class="tag vault">Great Vault</span>' : '') + (item.mods
     ? item.mods.map((m) => `<span class="tag mod">${esc(m)}</span>`).join('')
-    : item.equipped ? '<span class="tag">Equipped</span>' : '';
+    : item.equipped ? '<span class="tag">Equipped</span>' : '');
   return `
     <label class="item ${item.equipped ? 'equipped' : ''} ${item.mods ? 'derived' : ''} ${!item.equipped && !item.mods && !isLikelyUpgrade(item) ? 'dim' : ''}" ${track ? `title="${esc(track)}"` : ''}>
       ${control}
@@ -141,16 +143,19 @@ function itemRow(item) {
 function renderSlots() {
   els.slots.innerHTML = GROUPS.map((group) => {
     const equipped = equippedInGroup(group);
-    const bags = parsed.bags.filter((b) => b.group === group).sort((a, b) => (b.ilvl ?? 0) - (a.ilvl ?? 0));
+    const byIlvl = (a, b) => (b.ilvl ?? 0) - (a.ilvl ?? 0);
+    const vault = parsed.vault.filter((v) => v.group === group).sort(byIlvl);
+    const bags = parsed.bags.filter((b) => b.group === group).sort(byIlvl);
     const mods = derived.filter((d) => d.group === group);
-    if (!equipped.length && !bags.length) return '';
-    const ticked = bags.filter((b) => selected.has(b.key)).length;
+    const options = [...vault, ...bags];
+    if (!equipped.length && !options.length) return '';
+    const ticked = options.filter((b) => selected.has(b.key)).length;
     return `
       <div class="slot">
-        <h3><span>${GROUP_LABELS[group]}</span><span>${bags.length ? `${ticked}/${bags.length} from bags` : ''}</span></h3>
+        <h3><span>${GROUP_LABELS[group]}</span><span>${options.length ? `${ticked}/${options.length} selected` : ''}</span></h3>
         ${equipped.map(itemRow).join('')}
         ${mods.map(itemRow).join('')}
-        ${bags.map(itemRow).join('')}
+        ${options.map(itemRow).join('')}
       </div>`;
   }).join('');
 }
@@ -183,7 +188,7 @@ function renderUpgrades() {
 // Equipped items plus everything ticked, including already-modified copies.
 function selectedSources() {
   const equipped = Object.values(parsed.equipped).filter((it) => !IGNORED_SLOTS.has(it.slot));
-  return [...equipped, ...parsed.bags, ...derived].filter((it) => it.equipped || selected.has(it.key));
+  return [...equipped, ...parsed.bags, ...parsed.vault, ...derived].filter((it) => it.equipped || selected.has(it.key));
 }
 
 function addMods(op, eligible) {
@@ -460,14 +465,14 @@ function loadProfile(text) {
     for (const el of cards) el.hidden = true;
     return;
   }
-  parsed = parseProfile(text);
+  parsed = fillItemInfo(parseProfile(text));
   if (!parsed.className) {
     els.character.hidden = false;
     els.character.innerHTML = '<span class="pill">No character found. Paste the full /simc export.</span>';
     for (const el of cards) el.hidden = true;
     return;
   }
-  selected = new Set(parsed.bags.filter(isLikelyUpgrade).map((b) => b.key));
+  selected = new Set([...parsed.bags, ...parsed.vault].filter(isLikelyUpgrade).map((b) => b.key));
   crests = { ...parsed.currencies };
   charges = parsed.catalystCharges ?? 0;
   modified = [];
@@ -734,7 +739,7 @@ function changeChips(row, bare = false) {
   }
   return row.changes.map((c) => chip(SLOT_LABELS[c.slot] ?? c.slot, `
     <a class="chg-name item" href="${wowheadUrl(c)}" target="_blank" rel="noopener">${esc(c.name)}</a>
-    <span class="chg-meta"><span class="ilvl-pill">${c.ilvl ?? ''}</span>${(c.mods ?? []).map((m) => `<span class="tag mod">${esc(m)}</span>`).join('')}</span>`)).join('');
+    <span class="chg-meta"><span class="ilvl-pill">${c.ilvl ?? ''}</span>${c.vault ? '<span class="tag vault">Great Vault</span>' : ''}${(c.mods ?? []).map((m) => `<span class="tag mod">${esc(m)}</span>`).join('')}</span>`)).join('');
 }
 
 
@@ -1016,7 +1021,7 @@ document.querySelector('#gear-card .bulk').addEventListener('click', (e) => {
   const mode = e.target.dataset.bulk;
   if (!mode) return;
   const pick = { all: () => true, none: () => false, upgrades: isLikelyUpgrade }[mode];
-  selected = new Set([...parsed.bags.filter(pick), ...(mode === 'none' ? [] : derived)].map((b) => b.key));
+  selected = new Set([...[...parsed.bags, ...parsed.vault].filter(pick), ...(mode === 'none' ? [] : derived)].map((b) => b.key));
   renderSlots();
   updateCount();
 });

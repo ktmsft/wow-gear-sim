@@ -1,4 +1,4 @@
-// Regenerates lib/icons.js (item icons and quality, gem icons, enchant names) for
+// Regenerates lib/icons.js (item icons, quality and names, gem icons, enchant names) for
 // the current expansion from Raidbots' public game data. Run with update-season-data.
 
 import fs from 'node:fs';
@@ -17,9 +17,10 @@ const get = async (name) => {
 const [items, enchants] = await Promise.all([get('equippable-items'), get('enchantments')]);
 const expansion = Math.max(...items.map((i) => i.expansion ?? 0));
 
-// id -> [icon, quality]
+// id -> [icon, quality, name]. Older items in the Mythic+ pool (source instance -1) count too.
+const inSeason = (i) => i.expansion === expansion || i.sources?.some((s) => s.instanceId === -1);
 const itemIcons = {};
-for (const i of items) if (i.expansion === expansion && i.icon) itemIcons[i.id] = [i.icon, i.quality ?? 4];
+for (const i of items) if (inSeason(i) && i.icon) itemIcons[i.id] = [i.icon, i.quality ?? 4, i.name ?? ''];
 
 // Gems by item id; enchants by enchant id, named after the item that applies them.
 const gems = {};
