@@ -17,6 +17,7 @@ import { deriveItems } from './lib/upgrades.js';
 import { buildSimcInput, buildVariants, normalizeOptions } from './lib/simc-input.js';
 import { breakdown, buffUptimes, mainStat, scaleOnly, statWeights } from './lib/report.js';
 import { crestVariants, vaultVariants, trinketVariants } from './lib/modes.js';
+import { allowedNames, checkRequest } from './lib/request-guard.js';
 import * as updater from './updater.js';
 import * as history from './history.js';
 import pkg from './package.json' with { type: 'json' };
@@ -30,6 +31,7 @@ const THREADS = Number(process.env.SIM_THREADS ?? Math.max(1, os.cpus().length))
 const WORK_DIR = path.join(os.tmpdir(), 'wow-gear-sim');
 const REPORT_DIR = path.join(WORK_DIR, 'reports');
 const APP_VERSION = pkg.version;
+const ALLOWED_NAMES = allowedNames();
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -605,6 +607,8 @@ function openBrowser(url) {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
+  const blocked = checkRequest({ method: req.method, host: req.headers.host, origin: req.headers.origin }, ALLOWED_NAMES);
+  if (blocked) return send(res, 403, { error: blocked });
   try {
     if (req.method === 'GET' && url.pathname === '/api/status') {
       simcVersion = await detectSimcVersion();

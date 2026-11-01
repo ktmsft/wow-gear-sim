@@ -125,6 +125,7 @@ The logo uses [Cormorant](https://fonts.google.com/specimen/Cormorant) by the Co
 |---|---|---|
 | `PORT` | `8787` | |
 | `HOST` | `127.0.0.1` | Use `0.0.0.0` to allow other devices on your network |
+| `ALLOWED_HOSTS` | | Extra host names to accept with `HOST=0.0.0.0`, comma separated. IP addresses, `localhost` and this PC's name always work |
 | `SIMC_PATH` | `simc/simc.exe` | |
 | `SIM_THREADS` | all cores | |
 
