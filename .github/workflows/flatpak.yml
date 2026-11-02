@@ -1,0 +1,21 @@
+name: Flatpak
+
+on:
+  workflow_dispatch:
+
+jobs:
+  flatpak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+
+      # Builds SIMulacrum.flatpak and uploads it as a workflow artifact.
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: SIMulacrum.flatpak
+          manifest-path: packaging/flatpak/io.github.ktmsft.SIMulacrum.yml
+          cache-key: flatpak-builder-${{ github.sha }}

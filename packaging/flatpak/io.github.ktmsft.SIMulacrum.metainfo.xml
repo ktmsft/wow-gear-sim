@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.ktmsft.SIMulacrum</id>
+  <name>SIMulacrum</name>
+  <summary>Find your best World of Warcraft gear with SimulationCraft</summary>
+  <developer id="io.github.ktmsft">
+    <name>bitofmoss</name>
+  </developer>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>
+      A local "Top Gear" for World of Warcraft. Paste your SimulationCraft addon export and
+      SIMulacrum sims your gear, gems, consumables and talent loadouts, then ranks them by DPS.
+      It works for any class and spec, and runs entirely on your PC with no limits.
+    </p>
+    <ul>
+      <li>Every valid combination of equipped and bag items</li>
+      <li>Upgrades and catalyst, using the crests and charges in your export</li>
+      <li>Gems, consumables and saved talent loadouts</li>
+      <li>Stat weights, a crest planner, the Great Vault, a trinket chart and fight styles</li>
+      <li>DPS history saved on your PC</li>
+    </ul>
+    <p>
+      SIMulacrum opens in your web browser. Keep its terminal window open while you use it.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.ktmsft.SIMulacrum.desktop</launchable>
+  <url type="homepage">https://github.com/ktmsft/wow-gear-sim</url>
+  <url type="bugtracker">https://github.com/ktmsft/wow-gear-sim/issues</url>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/ktmsft/wow-gear-sim/main/docs/screenshots/overview.png</image>
+      <caption>A character pasted in with gear to try</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/ktmsft/wow-gear-sim/main/docs/screenshots/results.png</image>
+      <caption>Ranked sim results</caption>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="1.3.2" date="2026-10-20"/>
+  </releases>
+</component>

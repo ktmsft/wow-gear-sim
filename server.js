@@ -21,9 +21,9 @@ import * as updater from './updater.js';
 import * as history from './history.js';
 import pkg from './package.json' with { type: 'json' };
 
-// Packaged as SIMulacrum.exe, files sit next to the exe.
-const PACKAGED = isSea();
-const ROOT = PACKAGED ? path.dirname(process.execPath) : path.dirname(fileURLToPath(import.meta.url));
+// Packaged as SIMulacrum.exe, files sit next to the exe. The Flatpak runs server.js directly.
+const PACKAGED = isSea() || !!process.env.FLATPAK_ID;
+const ROOT = isSea() ? path.dirname(process.execPath) : path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? '127.0.0.1';
 const THREADS = Number(process.env.SIM_THREADS ?? Math.max(1, os.cpus().length));

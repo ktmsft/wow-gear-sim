@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SIMulacrum
+Comment=Find your best World of Warcraft gear with SimulationCraft
+Exec=simulacrum
+Icon=io.github.ktmsft.SIMulacrum
+Terminal=true
+Categories=Game;RolePlaying;
+Keywords=WoW;Warcraft;SimulationCraft;simc;Top Gear;

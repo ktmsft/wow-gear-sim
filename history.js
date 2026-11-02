@@ -4,9 +4,12 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+// The Flatpak sandbox can only write to its own data folder (~/.var/app/<id>/data).
 export const DIR = process.env.LOCALAPPDATA
   ? path.join(process.env.LOCALAPPDATA, 'SIMulacrum')
-  : path.join(os.homedir(), '.simulacrum');
+  : process.env.FLATPAK_ID
+    ? path.join(process.env.XDG_DATA_HOME, 'SIMulacrum')
+    : path.join(os.homedir(), '.simulacrum');
 const FILE = path.join(DIR, 'history.json');
 const MAX = 2000;
 

@@ -1,0 +1,50 @@
+# Flatpak build of SIMulacrum: server.js on Node 22, with SimulationCraft built from source.
+# Build: flatpak-builder --user --install --install-deps-from=flathub --force-clean build-dir packaging/flatpak/io.github.ktmsft.SIMulacrum.yml
+
+id: io.github.ktmsft.SIMulacrum
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node22
+command: simulacrum
+finish-args:
+  # Serves the page on 127.0.0.1, fetches item icons and checks for app updates.
+  - --share=network
+
+modules:
+  - name: simc
+    buildsystem: simple
+    build-commands:
+      - cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_GUI=OFF -DBUILD_TESTING=OFF
+      - cmake --build build --target simc --parallel "$FLATPAK_BUILDER_N_JOBS"
+      - install -Dm755 build/simc /app/lib/simulacrum/simc/simc
+      - for f in LICENSE* COPYING*; do [ -f "$f" ] && install -Dm644 "$f" "/app/share/licenses/$FLATPAK_ID/SimulationCraft-$f"; done; true
+    sources:
+      # Tracks SimulationCraft's default branch, like the Windows release.
+      - type: git
+        url: https://github.com/simulationcraft/simc.git
+        branch: midnight
+
+  - name: simulacrum
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 /usr/lib/sdk/node22/bin/node /app/bin/node
+      - mkdir -p /app/lib/simulacrum
+      - cp -r server.js updater.js history.js package.json lib public /app/lib/simulacrum/
+      - install -Dm755 packaging/flatpak/simulacrum.sh /app/bin/simulacrum
+      - install -Dm644 "packaging/flatpak/$FLATPAK_ID.desktop" -t /app/share/applications
+      - install -Dm644 "packaging/flatpak/$FLATPAK_ID.metainfo.xml" -t /app/share/metainfo
+      - install -Dm644 "packaging/flatpak/$FLATPAK_ID.png" -t /app/share/icons/hicolor/256x256/apps
+      - install -Dm644 LICENSE "/app/share/licenses/$FLATPAK_ID/LICENSE"
+      - if [ -f /usr/lib/sdk/node22/LICENSE ]; then install -Dm644 /usr/lib/sdk/node22/LICENSE "/app/share/licenses/$FLATPAK_ID/Node.js-LICENSE"; fi
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - .git
+          - .flatpak-builder
+          - node_modules
+          - dist
+          - simc
+          - build-dir
